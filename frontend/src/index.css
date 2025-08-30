@@ -1,0 +1,419 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================
+   SHADCN UI THEME VARIABLES (Primary Setup)
+   ============================================ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Map theme colors to Tailwind classes */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ============================================
+   LIGHT THEME (Default)
+   ============================================ */
+
+:root {
+  --radius: 0.625rem;
+
+  /* Core Colors - Light Mode */
+  --background: 0 0% 100%;
+  /* Pure White */
+  --foreground: 222 47% 11%;
+  /* Dark Slate */
+  --card: 0 0% 100%;
+  /* White */
+  --card-foreground: 222 47% 11%;
+  /* Dark Slate */
+  --popover: 0 0% 100%;
+  /* White */
+  --popover-foreground: 222 47% 11%;
+  /* Dark Slate */
+
+  /* Primary Colors */
+  --primary: 262 83% 58%;
+  /* Purple */
+  --primary-foreground: 0 0% 98%;
+  /* White */
+
+  /* Secondary Colors */
+  --secondary: 210 40% 96%;
+  /* Light Gray */
+  --secondary-foreground: 222 47% 11%;
+  /* Dark Slate */
+
+  /* Muted Colors */
+  --muted: 210 40% 96%;
+  /* Light Gray */
+  --muted-foreground: 215 16% 47%;
+  /* Medium Gray */
+
+  /* Accent Colors */
+  --accent: 210 40% 96%;
+  /* Light Gray */
+  --accent-foreground: 222 47% 11%;
+  /* Dark Slate */
+
+  /* Status Colors */
+  --destructive: 0 84% 60%;
+  /* Red */
+  --destructive-foreground: 0 0% 98%;
+  /* White */
+
+  /* Border & Input */
+  --border: 214 32% 91%;
+  /* Light Border */
+  --input: 214 32% 91%;
+  /* Light Input Background */
+  --ring: 262 83% 58%;
+  /* Purple Ring */
+
+  /* Chart Colors */
+  --chart-1: 12 76% 61%;
+  /* Orange */
+  --chart-2: 173 58% 39%;
+  /* Teal */
+  --chart-3: 197 37% 24%;
+  /* Dark Blue */
+  --chart-4: 43 74% 66%;
+  /* Yellow */
+  --chart-5: 27 87% 67%;
+  /* Orange-Red */
+
+  /* Sidebar Colors */
+  --sidebar: 0 0% 98%;
+  /* Light Sidebar */
+  --sidebar-foreground: 222 47% 11%;
+  /* Dark Text */
+  --sidebar-primary: 262 83% 58%;
+  /* Purple */
+  --sidebar-primary-foreground: 0 0% 98%;
+  /* White */
+  --sidebar-accent: 210 40% 96%;
+  /* Light Accent */
+  --sidebar-accent-foreground: 222 47% 11%;
+  /* Dark Text */
+  --sidebar-border: 214 32% 91%;
+  /* Light Border */
+  --sidebar-ring: 262 83% 58%;
+  /* Purple Ring */
+
+  /* Custom Kord Colors */
+  --kord-gradient-from: 262 83% 58%;
+  /* Purple */
+  --kord-gradient-to: 224 71% 54%;
+  /* Indigo */
+}
+
+/* ============================================
+   DARK THEME
+   ============================================ */
+
+.dark {
+  /* Core Colors - Dark Mode */
+  --background: 222 47% 11%;
+  /* Dark Slate */
+  --foreground: 213 31% 91%;
+  /* Light Gray */
+  --card: 224 71% 4%;
+  /* Very Dark Blue */
+  --card-foreground: 213 31% 91%;
+  /* Light Gray */
+  --popover: 224 71% 4%;
+  /* Very Dark Blue */
+  --popover-foreground: 213 31% 91%;
+  /* Light Gray */
+
+  /* Primary Colors */
+  --primary: 263 70% 50%;
+  /* Darker Purple */
+  --primary-foreground: 0 0% 98%;
+  /* White */
+
+  /* Secondary Colors */
+  --secondary: 215 28% 17%;
+  /* Dark Gray */
+  --secondary-foreground: 213 31% 91%;
+  /* Light Gray */
+
+  /* Muted Colors */
+  --muted: 215 28% 17%;
+  /* Dark Gray */
+  --muted-foreground: 218 11% 65%;
+  /* Medium Gray */
+
+  /* Accent Colors */
+  --accent: 215 28% 17%;
+  /* Dark Gray */
+  --accent-foreground: 213 31% 91%;
+  /* Light Gray */
+
+  /* Status Colors */
+  --destructive: 0 63% 31%;
+  /* Dark Red */
+  --destructive-foreground: 213 31% 91%;
+  /* Light Gray */
+
+  /* Border & Input */
+  --border: 215 28% 17%;
+  /* Dark Border */
+  --input: 215 28% 17%;
+  /* Dark Input Background */
+  --ring: 263 70% 50%;
+  /* Purple Ring */
+
+  /* Chart Colors - Dark Mode Variants */
+  --chart-1: 220 70% 50%;
+  /* Blue */
+  --chart-2: 160 60% 45%;
+  /* Green */
+  --chart-3: 30 80% 55%;
+  /* Orange */
+  --chart-4: 280 65% 60%;
+  /* Purple */
+  --chart-5: 340 75% 55%;
+  /* Pink */
+
+  /* Sidebar Colors - Dark Mode */
+  --sidebar: 224 71% 4%;
+  /* Very Dark Blue */
+  --sidebar-foreground: 213 31% 91%;
+  /* Light Gray */
+  --sidebar-primary: 263 70% 50%;
+  /* Purple */
+  --sidebar-primary-foreground: 0 0% 98%;
+  /* White */
+  --sidebar-accent: 215 28% 17%;
+  /* Dark Gray */
+  --sidebar-accent-foreground: 213 31% 91%;
+  /* Light Gray */
+  --sidebar-border: 215 28% 17%;
+  /* Dark Border */
+  --sidebar-ring: 263 70% 50%;
+  /* Purple Ring */
+
+  /* Custom Kord Colors - Dark Mode */
+  --kord-gradient-from: 263 70% 50%;
+  /* Darker Purple */
+  --kord-gradient-to: 224 64% 33%;
+  /* Darker Indigo */
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Ensure smooth transitions when switching themes */
+  * {
+    transition: background-color 0.2s ease-in-out,
+      border-color 0.2s ease-in-out,
+      color 0.2s ease-in-out;
+  }
+}
+
+/* ============================================
+   CUSTOM UTILITY CLASSES
+   ============================================ */
+
+/* Kord-specific gradient backgrounds */
+.bg-kord-gradient {
+  background: linear-gradient(135deg, hsl(var(--kord-gradient-from)), hsl(var(--kord-gradient-to)));
+}
+
+.bg-kord-gradient-radial {
+  background: radial-gradient(ellipse at center, hsl(var(--kord-gradient-from)), hsl(var(--kord-gradient-to)));
+}
+
+/* Theme-aware utility classes */
+.bg-app-background {
+  background-color: hsl(var(--background));
+}
+
+.text-app-foreground {
+  color: hsl(var(--foreground));
+}
+
+.bg-app-card {
+  background-color: hsl(var(--card));
+}
+
+.text-app-card-foreground {
+  color: hsl(var(--card-foreground));
+}
+
+.bg-app-primary {
+  background-color: hsl(var(--primary));
+}
+
+.text-app-primary-foreground {
+  color: hsl(var(--primary-foreground));
+}
+
+.border-app-border {
+  border-color: hsl(var(--border));
+}
+
+.ring-app-ring {
+  --tw-ring-color: hsl(var(--ring));
+}
+
+/* ============================================
+   COMPONENT OVERRIDES (if needed)
+   ============================================ */
+
+/* Ensure buttons and inputs respond to theme changes */
+button,
+input,
+textarea,
+select {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Custom scrollbar for better theming */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary));
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
+}
+
+/* frontend/src/styles/globals.css (Add these or similar styles) */
+
+/* For Webkit browsers (Chrome, Safari) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  /* width of the scrollbar */
+  height: 8px;
+  /* height of the scrollbar for horizontal scrollbars */
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  /* color of the tracking area */
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #888;
+  /* color of the scroll thumb */
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #555;
+  /* color of the scroll thumb on hover */
+}
+
+/* For Firefox */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  /* "auto" or "thin" */
+  scrollbar-color: #888 #f1f1f1;
+  /* thumb and track color */
+}
+
+/* For dark mode */
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: #333;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #555;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}
+
+.dark .custom-scrollbar {
+  scrollbar-color: #555 #333;
+}
+
+.settings-drawer {
+  position: fixed;
+  top: 0;
+  right: -320px;     /* hidden by default */
+  width: 320px;
+  height: 100vh;
+  background: var(--tw-bg-opacity,1) white;
+  color: #111;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  transition: right .25s ease;
+}
+.dark .settings-drawer { background:#111; color:#f3f4f6; }
+.settings-drawer.open { right: 0; }
