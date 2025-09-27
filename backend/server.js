@@ -12,42 +12,17 @@ import morgan from "morgan";
 import xss from "xss-clean";
 // REMOVE: import multer from "multer"; // No longer needed directly here
 // REMOVE: import { existsSync, mkdirSync } from "fs"; // No longer needed directly here
-
 import connectDB from "./config/db.js";
 import { initSocket } from "./socket.js";
 // Import global error handler and sendErrorResponse
 import errorHandler, { sendErrorResponse } from "./middleware/errorHandler.js"; // Import default and named export
-
-// Import authentication middleware (ensure correct path based on your structure)
-import {
-  protect,
-  verifyTokenSocket,
-  authorizeAdmin,
-} from "./middleware/authMiddleware.js";
-
-// Import validation middlewares (ensure correct path based on your structure)
-import {
-  validateMessageId,
-  validateSendMessage,
-  validateEditMessage,
-  validateDeleteMessage,
-  validateAddReaction,
-  validateRemoveReaction,
-  validateForwardMessage,
-  validateSearchMessages,
-  validateSendFriendRequest,
-  validateFriendRequestAction,
-  validateUnfriend,
-  validateObjectId,
-} from "./middleware/validationMiddleware.js";
-
-// NEW: Import upload from the dedicated middleware file
 
 // Import your API routes
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import channelRoutes from "./routes/channelRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
+import conversationRoutes from "./routes/conversationRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
@@ -126,10 +101,6 @@ const authLimiter = rateLimit({
 app.use("/api", apiLimiter); // Apply to all /api routes by default
 app.use("/api/auth", authLimiter); // More strict for auth routes
 
-// --- End Security & Core Middleware ---
-
-// Serve static files (e.g., uploaded profile images, files)
-// Ensure this path matches the uploadsDir in uploadMiddleware.js
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads"))); // Adjust based on your project structure. Should point to the same uploads folder.
 
 // API Routes
@@ -137,6 +108,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/conversations", conversationRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/settings", settingsRoutes);

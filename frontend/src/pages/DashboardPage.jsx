@@ -1,6 +1,4 @@
-// frontend/src/pages/DashboardPage.jsx
-
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '@/store/chatStore';
 import ChatMainPanel from '@/pages/Chat/ChatMainPanel'; // Import the main chat panel

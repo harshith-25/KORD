@@ -1,32 +1,24 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import {
-	Search,
-	Edit,
-	ListFilter,
-	Loader2,
-	MessageCircleMore,
-	Pin,
-	Archive,
-	Trash2,
-	X,
-	ChevronDown,
-	Circle,
-	Check,
-	CheckCheck,
-	Mic,
-	Image,
-	FileText,
-	Video,
-	Settings,
-	MoreHorizontal,
-	ArrowLeft,
-	RefreshCw
-} from 'lucide-react';
+import { Search, Edit, ListFilter, MessageCircleMore, Pin, Archive, Trash2, X, ChevronDown, Check, CheckCheck, Clock, Mic, Image, FileText, Video, MoreHorizontal, ArrowLeft, RefreshCw, Star, VolumeX, ExternalLink, MapPin } from 'lucide-react';
 import { useChatStore } from '@/store/chatStore';
-import { format, isToday, isYesterday, isThisWeek } from 'date-fns';
+import { renderSkeleton } from '@/skeletons/ChatPanel';
+import { useAuthStore } from '@/store/authStore';
 import NewChatModal from './NewChatModal';
+import { isToday, isYesterday, isThisWeek } from "date-fns";
 
-const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false, onBack }) => {
+const formatTime = (date) => {
+	return date.toLocaleTimeString('en-US', {
+		hour: 'numeric',
+		minute: '2-digit',
+		hour12: true
+	});
+};
+
+const formatWeekday = (date) => {
+	return date.toLocaleDateString('en-US', { weekday: 'long' });
+};
+
+const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false, onBack, popOutChats = [], onPopOutToggle }) => {
 	const {
 		contacts,
 		loadingContacts,
@@ -34,37 +26,33 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 		fetchContacts,
 		selectedChatId,
 		setSelectedChat,
-		archiveChat,
-		deleteChat,
-		pinChat,
-		markAsRead,
-		searchChats,
-		onlineUsers
+		onlineUsers,
+		getTypingUsers,
+		isUserOnline
 	} = useChatStore();
+
+	const { user: currentUser } = useAuthStore();
 
 	// State management
 	const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
 	const [searchQuery, setSearchQuery] = useState('');
-	const [activeFilter, setActiveFilter] = useState('all'); // all, unread, groups, archived
+	const [activeFilter, setActiveFilter] = useState('all');
 	const [showFilters, setShowFilters] = useState(false);
 	const [selectedChats, setSelectedChats] = useState(new Set());
 	const [isSelectionMode, setIsSelectionMode] = useState(false);
-	const [swipedChatId, setSwipedChatId] = useState(null);
 	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [showScrollTop, setShowScrollTop] = useState(false);
+	const [contextMenu, setContextMenu] = useState(null);
+	const [hoveredChat, setHoveredChat] = useState(null);
 
 	// Refs
 	const searchInputRef = useRef(null);
 	const listRef = useRef(null);
 	const newChatButtonRef = useRef(null);
+	const contextMenuRef = useRef(null);
 	const pullToRefreshThreshold = 100;
 	const [pullDistance, setPullDistance] = useState(0);
 	const [isPulling, setIsPulling] = useState(false);
-
-	// Swipe handling state
-	const [swipeStart, setSwipeStart] = useState(null);
-	const [swipeDistance, setSwipeDistance] = useState(0);
-	const [activeSwipeChat, setActiveSwipeChat] = useState(null);
 
 	// Memoized filtered and sorted contacts
 	const filteredContacts = useMemo(() => {
@@ -72,35 +60,147 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 
 		// Apply search filter
 		if (searchQuery.trim()) {
-			filtered = filtered.filter(chat =>
-				chat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				chat.lastMessage?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				chat.phoneNumber?.includes(searchQuery)
-			);
+			filtered = filtered.filter(chat => {
+				const name = getChatName(chat).toLowerCase();
+				const lastMessage = getLastMessageContent(chat).toLowerCase();
+				const query = searchQuery.toLowerCase();
+				return name.includes(query) || lastMessage.includes(query);
+			});
 		}
 
 		// Apply category filter
 		switch (activeFilter) {
 			case 'unread':
-				filtered = filtered.filter(chat => chat.unreadCount > 0);
-				break;
-			case 'groups':
-				filtered = filtered.filter(chat => chat.isGroup);
+				filtered = filtered.filter(chat => (chat.unreadCount || 0) > 0);
 				break;
 			case 'archived':
 				filtered = filtered.filter(chat => chat.isArchived);
 				break;
 			default:
-				filtered = filtered.filter(chat => !chat.isArchived);
+				filtered = filtered.filter(chat => chat.isActive && !chat.isArchived);
 		}
 
-		// Sort by pinned, then by last message time
 		return filtered.sort((a, b) => {
-			if (a.isPinned && !b.isPinned) return -1;
-			if (!a.isPinned && b.isPinned) return 1;
-			return new Date(b.time || 0) - new Date(a.time || 0);
+			const timeA = new Date(a.lastActivity || a.updatedAt || a.createdAt || 0);
+			const timeB = new Date(b.lastActivity || b.updatedAt || b.createdAt || 0);
+			return timeB - timeA;
 		});
 	}, [contacts, searchQuery, activeFilter]);
+
+	// Get chat name based on type and participants
+	const getChatName = useCallback((chat) => {
+		if (!chat) return 'Unknown Chat';
+
+		if (chat.type === 'direct' && chat.participants && currentUser) {
+			const otherParticipant = chat.participants.find(p => p._id !== currentUser._id);
+			if (otherParticipant) {
+				if (otherParticipant.firstName && otherParticipant.lastName) {
+					return `${otherParticipant.firstName} ${otherParticipant.lastName}`;
+				}
+				return otherParticipant.firstName || otherParticipant.lastName || otherParticipant.username || otherParticipant.email || 'Unknown User';
+			}
+		}
+
+		return chat.name || `Group ${chat.memberCount || 0}`;
+	}, [currentUser]);
+
+	// Get chat avatar
+	const getChatAvatar = useCallback((chat) => {
+		if (!chat) return null;
+
+		if (chat.avatar) return chat.avatar;
+
+		if (chat.type === 'direct' && chat.participants && currentUser) {
+			const otherParticipant = chat.participants.find(p => p._id !== currentUser._id);
+			if (otherParticipant?.image) {
+				return otherParticipant.image;
+			}
+			// Generate avatar if no image
+			const name = getChatName(chat);
+			return `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=random&radius=50`;
+		}
+
+		return chat.avatar || null;
+	}, [currentUser, getChatName]);
+
+	// Get last message content
+	const getLastMessageContent = useCallback((chat) => {
+		if (!chat.lastMessage) {
+			if ((chat.messageCount || 0) === 0) return 'No messages yet';
+			return 'Tap to view messages';
+		}
+
+		if (typeof chat.lastMessage === 'string') {
+			return chat.lastMessage;
+		}
+
+		if (chat.lastMessage.content) {
+			return chat.lastMessage.content;
+		}
+
+		// Handle different message types
+		switch (chat.lastMessage.type || chat.lastMessage.messageType) {
+			case 'image':
+				return 'Photo';
+			case 'video':
+				return 'Video';
+			case 'audio':
+				return 'Audio';
+			case 'file':
+				return 'File';
+			case 'location':
+				return 'Location';
+			default:
+				return chat.lastMessage.content || 'Message';
+		}
+	}, []);
+
+	// Get message type icon
+	const getMessageTypeIcon = useCallback((chat) => {
+		const messageType = chat.lastMessage?.type || chat.lastMessage?.messageType;
+
+		switch (messageType) {
+			case 'image':
+				return <Image className="w-4 h-4 text-gray-500" />;
+			case 'video':
+				return <Video className="w-4 h-4 text-gray-500" />;
+			case 'audio':
+				return <Mic className="w-4 h-4 text-gray-500" />;
+			case 'file':
+				return <FileText className="w-4 h-4 text-gray-500" />;
+			case 'location':
+				return <MapPin className="w-4 h-4 text-gray-500" />;
+			default:
+				return null;
+		}
+	}, []);
+
+	// Get message status icon
+	const getMessageStatusIcon = useCallback((chat) => {
+		const lastMessage = chat.lastMessage;
+		if (!lastMessage || !currentUser) return null;
+
+		// Only show status for messages sent by current user
+		const isSentByCurrentUser = lastMessage.sender === currentUser._id ||
+			(typeof lastMessage.sender === 'object' && lastMessage.sender?._id === currentUser._id);
+
+		if (!isSentByCurrentUser) return null;
+
+		const status = lastMessage.deliveryStatus || lastMessage.status || 'sent';
+
+		switch (status) {
+			case 'sending':
+				return <Clock className="w-3 h-3 text-gray-400" />;
+			case 'sent':
+				return <Check className="w-3 h-3 text-gray-400" />;
+			case 'delivered':
+				return <CheckCheck className="w-3 h-3 text-gray-400" />;
+			case 'read':
+				return <CheckCheck className="w-3 h-3 text-blue-500" />;
+			default:
+				return <Check className="w-3 h-3 text-gray-400" />;
+		}
+	}, [currentUser]);
 
 	// Enhanced time formatting
 	const formatLastMessageTime = useCallback((isoString) => {
@@ -110,13 +210,13 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 			const date = new Date(isoString);
 
 			if (isToday(date)) {
-				return format(date, 'p'); // 9:05 AM
+				return formatTime(date);
 			} else if (isYesterday(date)) {
 				return 'Yesterday';
 			} else if (isThisWeek(date)) {
-				return format(date, 'EEEE'); // Monday
+				return formatWeekday(date);
 			} else {
-				return format(date, 'MM/dd/yy');
+				return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
 			}
 		} catch (error) {
 			console.error('Error formatting date:', error);
@@ -129,27 +229,37 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 		return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
 	}, []);
 
-	// Get message preview with media indicators
-	const getMessagePreview = useCallback((chat) => {
-		if (!chat.lastMessage) return 'No messages yet';
+	// Check if user is online
+	const isUserOnlineCheck = useCallback((chat) => {
+		if (!onlineUsers || !chat.participants || !currentUser) return false;
 
-		const { lastMessage, lastMessageType, lastMessageSender } = chat;
-		const senderPrefix = chat.isGroup && lastMessageSender ? `${lastMessageSender}: ` : '';
-
-		switch (lastMessageType) {
-			case 'image':
-				return `${senderPrefix}📷 Photo`;
-			case 'video':
-				return `${senderPrefix}🎥 Video`;
-			case 'audio':
-				return `${senderPrefix}🎵 Audio`;
-			case 'document':
-				return `${senderPrefix}📄 Document`;
-			case 'location':
-				return `${senderPrefix}📍 Location`;
-			default:
-				return `${senderPrefix}${lastMessage}`;
+		if (chat.type === 'direct') {
+			const otherParticipant = chat.participants.find(p => p._id !== currentUser._id);
+			return otherParticipant && onlineUsers.includes(otherParticipant._id);
 		}
+
+		return chat.participants.some(participant =>
+			onlineUsers.includes(participant._id)
+		);
+	}, [onlineUsers, currentUser]);
+
+	// Check if user is typing
+	const isUserTyping = useCallback((chat) => {
+		if (!getTypingUsers) return false;
+		const typingUsers = getTypingUsers(chat.conversationId);
+		return typingUsers.length > 0;
+	}, [getTypingUsers]);
+
+	// Handle context menu
+	const handleContextMenu = useCallback((e, chat) => {
+		e.preventDefault();
+		e.stopPropagation();
+
+		setContextMenu({
+			chat,
+			x: e.clientX,
+			y: e.clientY
+		});
 	}, []);
 
 	// Handle chat selection
@@ -168,8 +278,11 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 			}
 		} else {
 			setSelectedChat(chatId);
-			onChatSelect?.(chatId);
+			if (onChatSelect) {
+				onChatSelect(chatId);
+			}
 		}
+		setContextMenu(null);
 	}, [isSelectionMode, selectedChats, setSelectedChat, onChatSelect]);
 
 	// Handle long press for selection mode
@@ -180,47 +293,13 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 		}
 	}, [isSelectionMode]);
 
-	// Swipe handlers - using native touch events instead of useSwipeable
-	const handleTouchStartSwipe = useCallback((e, chatId) => {
-		if (!isMobile) return;
-
-		const touch = e.touches[0];
-		setSwipeStart({
-			x: touch.clientX,
-			y: touch.clientY,
-			chatId: chatId,
-			time: Date.now()
-		});
-		setActiveSwipeChat(chatId);
-	}, [isMobile]);
-
-	const handleTouchMoveSwipe = useCallback((e, chatId) => {
-		if (!isMobile || !swipeStart || swipeStart.chatId !== chatId) return;
-
-		const touch = e.touches[0];
-		const deltaX = swipeStart.x - touch.clientX;
-		const deltaY = Math.abs(touch.clientY - swipeStart.y);
-
-		// Only allow horizontal swipes
-		if (deltaY < 50 && deltaX > 0) {
-			e.preventDefault();
-			setSwipeDistance(Math.min(deltaX, 150));
+	// Handle pop-out toggle
+	const handlePopOutToggle = useCallback((chatId) => {
+		if (onPopOutToggle) {
+			onPopOutToggle(chatId);
 		}
-	}, [isMobile, swipeStart]);
-
-	const handleTouchEndSwipe = useCallback((e, chatId) => {
-		if (!isMobile || !swipeStart || swipeStart.chatId !== chatId) return;
-
-		if (swipeDistance > 75) {
-			setSwipedChatId(chatId);
-		} else {
-			setSwipedChatId(null);
-		}
-
-		setSwipeStart(null);
-		setSwipeDistance(0);
-		setActiveSwipeChat(null);
-	}, [isMobile, swipeStart, swipeDistance]);
+		setContextMenu(null);
+	}, [onPopOutToggle]);
 
 	// Pull to refresh
 	const handleTouchStart = useCallback((e) => {
@@ -263,6 +342,29 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 		listRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
 	}, []);
 
+	// Close context menu when clicking outside
+	useEffect(() => {
+		const handleClickOutside = (e) => {
+			if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
+				setContextMenu(null);
+			}
+		};
+
+		if (contextMenu) {
+			document.addEventListener('mousedown', handleClickOutside);
+			return () => document.removeEventListener('mousedown', handleClickOutside);
+		}
+	}, [contextMenu]);
+
+	// Mock functions for missing store methods
+	const archiveChat = useCallback((chatId) => {
+		console.log("Archive chat:", chatId);
+	}, []);
+
+	const deleteChat = useCallback((chatId) => {
+		console.log("Delete chat:", chatId);
+	}, []);
+
 	// Keyboard shortcuts
 	useEffect(() => {
 		const handleKeyDown = (e) => {
@@ -285,57 +387,40 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 					setSelectedChats(new Set());
 				} else if (searchQuery) {
 					setSearchQuery('');
+				} else if (contextMenu) {
+					setContextMenu(null);
 				}
 			}
 		};
 
 		document.addEventListener('keydown', handleKeyDown);
 		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [isSelectionMode, searchQuery]);
+	}, [isSelectionMode, searchQuery, contextMenu]);
 
 	// Auto-fetch contacts
 	useEffect(() => {
 		fetchContacts();
 	}, [fetchContacts]);
 
-	// Render skeleton loading
-	const renderSkeleton = () => (
-		<div className="divide-y divide-gray-100 dark:divide-gray-700">
-			{Array.from({ length: 8 }).map((_, i) => (
-				<div key={i} className="flex items-center p-3 animate-pulse">
-					<div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-full mr-3"></div>
-					<div className="flex-1">
-						<div className="flex justify-between items-start mb-1">
-							<div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24"></div>
-							<div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
-						</div>
-						<div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-32"></div>
-					</div>
-				</div>
-			))}
-		</div>
-	);
-
 	// Render filter chips
 	const renderFilterChips = () => (
 		<div className="px-3 pb-2 flex space-x-2 overflow-x-auto scrollbar-hide">
 			{[
-				{ key: 'all', label: 'All', count: contacts.filter(c => !c.isArchived).length },
-				{ key: 'unread', label: 'Unread', count: contacts.filter(c => c.unreadCount > 0).length },
-				{ key: 'groups', label: 'Groups', count: contacts.filter(c => c.isGroup).length },
+				{ key: 'all', label: 'All', count: contacts.filter(c => c.isActive && !c.isArchived).length },
+				{ key: 'unread', label: 'Unread', count: contacts.filter(c => (c.unreadCount || 0) > 0).length },
 				{ key: 'archived', label: 'Archived', count: contacts.filter(c => c.isArchived).length }
 			].map(filter => (
 				<button
 					key={filter.key}
 					onClick={() => setActiveFilter(filter.key)}
-					className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium transition-colors ${activeFilter === filter.key
-						? 'bg-purple-500 text-white'
-						: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+					className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium transition-all duration-300 backdrop-blur-md ${activeFilter === filter.key
+						? 'bg-white/20 text-purple-600 shadow-lg border border-white/30'
+						: 'bg-white/10 text-gray-700 dark:text-gray-300 hover:bg-white/20 border border-white/10'
 						}`}
 				>
 					{filter.label}
 					{filter.count > 0 && (
-						<span className={`ml-1 text-xs ${activeFilter === filter.key ? 'text-purple-100' : 'text-gray-500'
+						<span className={`ml-1 text-xs ${activeFilter === filter.key ? 'text-purple-500' : 'text-gray-500'
 							}`}>
 							{filter.count}
 						</span>
@@ -345,160 +430,179 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 		</div>
 	);
 
-	// Render chat item
+	// Render chat item with liquid glass effects
 	const renderChatItem = (chat) => {
-		const isSelected = selectedChats.has(chat.id);
-		const isOnline = onlineUsers?.includes(chat.id);
-		const isSwiped = swipedChatId === chat.id;
-		const isActiveSwipe = activeSwipeChat === chat.id;
-		const currentSwipeDistance = isActiveSwipe ? swipeDistance : 0;
+		const isSelected = selectedChats.has(chat.conversationId);
+		const isOnline = isUserOnlineCheck(chat);
+		const isTyping = isUserTyping(chat);
+		const chatName = getChatName(chat);
+		const chatAvatar = getChatAvatar(chat);
+		const messageTypeIcon = getMessageTypeIcon(chat);
+		const statusIcon = getMessageStatusIcon(chat);
+
+		const isSelectedChat = selectedChatId === chat.conversationId;
+		const isPopOut = popOutChats?.includes(chat.conversationId);
+
+		const isDirect = chat.type === 'direct';
 
 		return (
-			<div
-				key={chat.id}
-				className={`relative transition-all duration-200 ${isSwiped ? '-translate-x-20' : 'translate-x-0'
-					}`}
-				style={{
-					transform: isActiveSwipe ? `translateX(-${currentSwipeDistance}px)` : isSwiped ? 'translateX(-80px)' : 'translateX(0)'
-				}}
-			>
-				{/* Swipe actions background */}
-				{isMobile && (
-					<div className="absolute inset-y-0 right-0 flex items-center space-x-2 px-4 bg-gradient-to-l from-red-500 to-orange-500">
-						<button
-							onClick={() => {
-								archiveChat(chat.id);
-								setSwipedChatId(null);
-							}}
-							className="p-2 bg-white/20 rounded-full"
-						>
-							<Archive className="h-5 w-5 text-white" />
-						</button>
-						<button
-							onClick={() => {
-								deleteChat(chat.id);
-								setSwipedChatId(null);
-							}}
-							className="p-2 bg-white/20 rounded-full"
-						>
-							<Trash2 className="h-5 w-5 text-white" />
-						</button>
-					</div>
-				)}
-
-				{/* Chat item */}
+			<div key={chat.conversationId} className="relative group">
 				<div
-					onClick={() => handleChatSelect(chat.id)}
-					onContextMenu={(e) => {
-						e.preventDefault();
-						handleLongPress(chat.id);
-					}}
-					onTouchStart={(e) => handleTouchStartSwipe(e, chat.id)}
-					onTouchMove={(e) => handleTouchMoveSwipe(e, chat.id)}
-					onTouchEnd={(e) => handleTouchEndSwipe(e, chat.id)}
-					className={`flex items-center p-3 cursor-pointer transition-colors duration-200 relative ${selectedChatId === chat.id && !isSelectionMode
-						? 'bg-purple-50 dark:bg-purple-900/20 border-r-4 border-purple-600 dark:border-purple-400'
-						: isSelected
-							? 'bg-blue-50 dark:bg-blue-900/20'
-							: 'hover:bg-gray-50 dark:hover:bg-gray-700'
-						}`}
+					onClick={() => handleChatSelect(chat.conversationId)}
+					onContextMenu={(e) => handleContextMenu(e, chat)}
+					onMouseEnter={() => setHoveredChat(chat.conversationId)}
+					onMouseLeave={() => setHoveredChat(null)}
+					className={`
+					group relative px-4 py-3 mx-2 my-0.5 rounded-2xl cursor-pointer 
+					transition-all duration-300 ease-out
+					${isSelectedChat && !isSelectionMode
+							? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/40 dark:to-indigo-900/40 shadow-lg shadow-blue-500/20 dark:shadow-blue-400/10 border border-blue-200 dark:border-blue-700/60'
+							: isSelected
+								? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/40 dark:to-indigo-900/40 shadow-lg shadow-blue-500/20 dark:shadow-blue-400/10 border border-blue-200 dark:border-blue-700/60'
+								: 'hover:bg-gray-50 dark:hover:bg-slate-800/60 hover:shadow-md hover:shadow-gray-500/20 dark:hover:shadow-black/20 active:scale-[0.98] border border-transparent hover:border-gray-200 dark:hover:border-slate-700'
+						}
+					${hoveredChat === chat.conversationId ? 'transform translate-x-1' : ''}
+				`}
 				>
-					{/* Selection checkbox */}
-					{isSelectionMode && (
-						<div className="mr-3">
-							<div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected
-								? 'bg-blue-500 border-blue-500'
-								: 'border-gray-300 dark:border-gray-600'
-								}`}>
-								{isSelected && <Check className="h-4 w-4 text-white" />}
-							</div>
-						</div>
+					{isSelectedChat && (
+						<div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-blue-500 to-indigo-600 dark:from-blue-400 dark:to-indigo-500 rounded-r-full" />
 					)}
 
-					{/* Avatar with online indicator */}
-					<div className="relative w-12 h-12 rounded-full mr-3 flex-shrink-0 overflow-hidden bg-gradient-to-br from-purple-400 to-purple-600">
-						{chat.avatar ? (
-							<img
-								src={chat.avatar}
-								alt={chat.name}
-								className="w-full h-full object-cover"
-								onError={(e) => {
-									e.target.style.display = 'none';
-									e.target.nextSibling.style.display = 'flex';
-								}}
-							/>
-						) : null}
-						<div
-							className={`w-full h-full ${chat.avatar ? 'hidden' : 'flex'} items-center justify-center text-white font-semibold text-sm`}
-						>
-							{getAvatarFallback(chat.name)}
-						</div>
-
-						{/* Online indicator */}
-						{isOnline && !chat.isGroup && (
-							<div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
-						)}
-
-						{/* Pinned indicator */}
-						{chat.isPinned && (
-							<div className="absolute top-0 right-0 w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center">
-								<Pin className="h-2 w-2 text-white" />
+					<div className="flex items-center gap-3 relative">
+						{/* Selection checkbox */}
+						{isSelectionMode && (
+							<div className="mr-3">
+								<div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300
+								${isSelected
+										? 'bg-blue-500 dark:bg-blue-400 border-blue-500 dark:border-blue-400 shadow-lg shadow-blue-500/30'
+										: 'border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 hover:border-gray-400 dark:hover:border-gray-500'
+									}`}>
+									{isSelected && <Check className="h-4 w-4 text-white" />}
+								</div>
 							</div>
 						)}
-					</div>
 
-					{/* Chat info */}
-					<div className="flex-1 min-w-0">
-						<div className="flex justify-between items-start mb-1">
-							<div className="flex items-center space-x-2 flex-1 min-w-0">
-								<h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-									{chat.name}
-								</h3>
-								{chat.isGroup && (
-									<span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-700 px-1 rounded">
-										{chat.memberCount}
-									</span>
-								)}
-							</div>
-							<div className="flex items-center space-x-1 flex-shrink-0">
-								<span className="text-xs text-gray-500 dark:text-gray-400">
-									{formatLastMessageTime(chat.time)}
-								</span>
-								{chat.lastMessageStatus && (
-									<div className="text-gray-500 dark:text-gray-400">
-										{chat.lastMessageStatus === 'sent' && <Check className="h-3 w-3" />}
-										{chat.lastMessageStatus === 'delivered' && <CheckCheck className="h-3 w-3" />}
-										{chat.lastMessageStatus === 'read' && <CheckCheck className="h-3 w-3 text-blue-500" />}
-									</div>
-								)}
-							</div>
-						</div>
-
-						<div className="flex justify-between items-center">
-							<p className="text-xs text-gray-600 dark:text-gray-300 truncate pr-2 flex-1">
-								{getMessagePreview(chat)}
-							</p>
-
-							<div className="flex items-center space-x-2 flex-shrink-0">
-								{/* Muted indicator */}
-								{chat.isMuted && (
-									<div className="w-4 h-4 bg-gray-400 rounded-full flex items-center justify-center">
-										<span className="text-xs text-white">🔇</span>
-									</div>
-								)}
-
-								{/* Unread count */}
-								{chat.unreadCount > 0 && (
-									<span className={`text-xs rounded-full px-2 py-1 min-w-[20px] text-center font-medium ${chat.isMuted
-										? 'bg-gray-400 text-white'
-										: 'bg-purple-500 text-white'
+						{/* Avatar with online indicator */}
+						<div className="relative flex-shrink-0">
+							{isDirect ? (
+								<>
+									<div className={`
+									h-12 w-12 rounded-full overflow-hidden ring-2 transition-all duration-300
+									${isSelectedChat || isSelected
+											? 'ring-blue-300 dark:ring-blue-500/60 shadow-lg shadow-blue-500/25'
+											: 'ring-gray-200 dark:ring-slate-700 group-hover:ring-gray-300 dark:group-hover:ring-slate-600'
 										}`}>
-										{chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+										{chatAvatar ? (
+											<img
+												src={chatAvatar}
+												alt={chatName}
+												className="w-full h-full object-cover"
+												onError={(e) => {
+													e.target.style.display = 'none';
+													e.target.nextSibling.style.display = 'flex';
+												}}
+											/>
+										) : null}
+										<div
+											className={`w-full h-full ${chatAvatar ? 'hidden' : 'flex'} items-center justify-center text-white font-semibold text-sm bg-gradient-to-br from-gray-500 to-gray-600 dark:from-slate-600 dark:to-slate-700`}
+										>
+											{getAvatarFallback(chatName)}
+										</div>
+									</div>
+									{/* Online indicator */}
+									{isOnline && (
+										<div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-gray-900 shadow-lg">
+											<div className="w-full h-full bg-emerald-400 rounded-full animate-pulse" />
+										</div>
+									)}
+								</>
+							) : (
+								<div className={`
+								h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold
+								transition-all duration-300 shadow-lg
+								${isSelectedChat || isSelected
+										? 'bg-gradient-to-br from-indigo-100 to-blue-100 dark:from-indigo-800/60 dark:to-blue-800/60 border-2 border-blue-300 dark:border-blue-600/60 text-indigo-700 dark:text-blue-300'
+										: 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-700 dark:to-slate-800 border-2 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 group-hover:border-gray-300 dark:group-hover:border-slate-500 group-hover:from-gray-200 group-hover:to-gray-300 dark:group-hover:from-slate-600 dark:group-hover:to-slate-700'
+									}`}>
+									#
+								</div>
+							)}
+						</div>
+
+						{/* Chat info */}
+						<div className="flex-1 min-w-0">
+							<div className="flex items-center justify-between mb-1">
+								<div className="flex items-center space-x-2 flex-1 min-w-0">
+									<h3 className={`font-semibold text-sm truncate transition-colors duration-200
+									${isSelectedChat || isSelected
+											? 'text-blue-900 dark:text-blue-100'
+											: 'text-gray-900 dark:text-slate-200 group-hover:text-gray-800 dark:group-hover:text-slate-100'}`}>
+										{chatName}
+									</h3>
+									{chat.type !== 'direct' && chat.memberCount && (
+										<span className={`text-xs font-medium px-2 py-0.5 rounded-full border transition-colors duration-200
+										${isSelectedChat || isSelected
+												? 'text-blue-700 dark:text-blue-200 bg-blue-100 dark:bg-blue-800/40 border-blue-200 dark:border-blue-700'
+												: 'text-gray-600 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 border-gray-200 dark:border-slate-700'
+											}`}>
+											{chat.memberCount}
+										</span>
+									)}
+									{chat.isArchived && (
+										<Archive className={`h-3 w-3 transition-colors duration-200
+										${isSelectedChat || isSelected
+												? 'text-blue-600 dark:text-blue-400'
+												: 'text-gray-400 dark:text-slate-500'}`} />
+									)}
+								</div>
+
+								<div className="flex items-center gap-2 flex-shrink-0 ml-2">
+									<span className={`text-xs font-medium transition-colors duration-200
+									${isSelectedChat || isSelected
+											? 'text-blue-600 dark:text-blue-300'
+											: 'text-gray-500 dark:text-slate-400 group-hover:text-gray-600 dark:group-hover:text-slate-300'}`}>
+										{formatLastMessageTime(chat.lastActivity || chat.updatedAt)}
 									</span>
-								)}
+									{(chat.unreadCount || 0) > 0 && (
+										<div className="bg-gradient-to-r from-red-500 to-red-600 dark:from-red-400 dark:to-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] h-5 flex items-center justify-center shadow-lg shadow-red-500/30 ring-2 ring-red-100 dark:ring-red-900/50">
+											{chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+										</div>
+									)}
+								</div>
+							</div>
+
+							<div className="flex items-center justify-between">
+								<div className={`text-xs truncate transition-colors duration-200 pr-2
+								${isTyping
+										? 'text-emerald-600 dark:text-emerald-400 italic font-medium'
+										: isSelectedChat || isSelected
+											? 'text-blue-700 dark:text-blue-200'
+											: 'text-gray-600 dark:text-slate-400 group-hover:text-gray-700 dark:group-hover:text-slate-300'
+									}`}>
+									{isTyping ? (
+										<div className="flex items-center gap-1">
+											<span>typing</span>
+											<div className="flex gap-0.5">
+												<div className="w-1 h-1 bg-emerald-600 dark:bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+												<div className="w-1 h-1 bg-emerald-600 dark:bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+												<div className="w-1 h-1 bg-emerald-600 dark:bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+											</div>
+										</div>
+									) : (
+										<div className="flex items-center space-x-2">
+											{messageTypeIcon}
+											<span>{getLastMessageContent(chat)}</span>
+										</div>
+									)}
+								</div>
+								<div className="flex items-center gap-1 flex-shrink-0">
+									{statusIcon}
+								</div>
 							</div>
 						</div>
 					</div>
+
+					<div className={`absolute bottom-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent dark:via-slate-600 transition-opacity duration-300 ${hoveredChat === chat.conversationId ? 'opacity-100' : 'opacity-0'}`} />
 				</div>
 			</div>
 		);
@@ -506,13 +610,13 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 
 	return (
 		<div className="flex flex-col h-full bg-white dark:bg-gray-800">
-			{/* Header */}
-			<div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0">
+			{/* Header with liquid glass effect */}
+			<div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0 bg-white/80 backdrop-blur-lg dark:bg-gray-800/80">
 				<div className="flex items-center space-x-3">
 					{showBackButton && (
 						<button
 							onClick={onBack}
-							className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+							className="p-1 rounded-full hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 backdrop-blur-sm"
 						>
 							<ArrowLeft className="h-5 w-5 text-gray-600 dark:text-gray-300" />
 						</button>
@@ -531,7 +635,7 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 									setIsSelectionMode(false);
 									setSelectedChats(new Set());
 								}}
-								className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+								className="p-2 rounded-full hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 backdrop-blur-sm"
 								title="Archive selected"
 							>
 								<Archive className="h-5 w-5 text-gray-600 dark:text-gray-300" />
@@ -541,7 +645,7 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 									setIsSelectionMode(false);
 									setSelectedChats(new Set());
 								}}
-								className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+								className="p-2 rounded-full hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 backdrop-blur-sm"
 								title="Cancel selection"
 							>
 								<X className="h-5 w-5 text-gray-600 dark:text-gray-300" />
@@ -550,18 +654,18 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 					) : (
 						<>
 							<button
-							ref={newChatButtonRef}
+								ref={newChatButtonRef}
 								onClick={() => setIsNewChatModalOpen((prev) => !prev)}
-								className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+								className="p-2 rounded-full hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 backdrop-blur-sm"
 								title="New Chat (Ctrl+N)"
 							>
 								<Edit className="h-5 w-5 text-gray-600 dark:text-gray-300" />
 							</button>
 							<button
 								onClick={() => setShowFilters(!showFilters)}
-								className={`p-2 rounded-full transition-colors ${showFilters
-									? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
-									: 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'
+								className={`p-2 rounded-full transition-all duration-200 backdrop-blur-sm ${showFilters
+									? 'bg-purple-100/60 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 shadow-md'
+									: 'hover:bg-white/20 dark:hover:bg-gray-700/20 text-gray-600 dark:text-gray-300'
 									}`}
 								title="Filter Chats"
 							>
@@ -569,7 +673,7 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 							</button>
 							<button
 								onClick={() => setIsSelectionMode(true)}
-								className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+								className="p-2 rounded-full hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 backdrop-blur-sm"
 								title="Select chats"
 							>
 								<MoreHorizontal className="h-5 w-5 text-gray-600 dark:text-gray-300" />
@@ -579,22 +683,22 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 				</div>
 			</div>
 
-			{/* Search Bar */}
+			{/* Search Bar with liquid glass effect */}
 			<div className="p-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
 				<div className="relative">
 					<input
 						ref={searchInputRef}
 						type="text"
-						placeholder="Search or start a new chat (Ctrl+K)"
+						placeholder="Search conversations (Ctrl+K)"
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
-						className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white dark:focus:bg-gray-600 transition-all duration-200"
+						className="w-full pl-10 pr-4 py-2 bg-white/30 dark:bg-gray-700/30 backdrop-blur-lg rounded-lg text-gray-800 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:bg-white/50 dark:focus:bg-gray-600/50 transition-all duration-200 border border-white/20 shadow-md"
 					/>
 					<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-500 dark:text-gray-400" />
 					{searchQuery && (
 						<button
 							onClick={() => setSearchQuery('')}
-							className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full transition-colors"
+							className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-white/20 dark:hover:bg-gray-600/20 rounded-full transition-all duration-200 backdrop-blur-sm"
 						>
 							<X className="h-4 w-4 text-gray-500 dark:text-gray-400" />
 						</button>
@@ -608,7 +712,7 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 			{/* Pull to refresh indicator */}
 			{isMobile && isPulling && (
 				<div
-					className="flex justify-center py-2 transition-all duration-200"
+					className="flex justify-center py-2 transition-all duration-200 bg-white/20 backdrop-blur-sm"
 					style={{ transform: `translateY(${Math.min(pullDistance, pullToRefreshThreshold)}px)` }}
 				>
 					<RefreshCw
@@ -634,7 +738,7 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 						<p className="text-sm mb-3">{error}</p>
 						<button
 							onClick={fetchContacts}
-							className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-md hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors text-sm font-medium"
+							className="px-4 py-2 bg-red-100/60 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-md hover:bg-red-200/60 dark:hover:bg-red-900/50 transition-all duration-200 text-sm font-medium backdrop-blur-sm border border-red-200/30"
 						>
 							Try Again
 						</button>
@@ -644,13 +748,13 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 						<MessageCircleMore className="w-16 h-16 mb-4 opacity-50" />
 						{searchQuery ? (
 							<>
-								<p className="text-lg font-semibold mb-2">No chats found</p>
+								<p className="text-lg font-semibold mb-2">No conversations found</p>
 								<p className="text-sm mb-4 max-w-sm">
 									Try searching with different keywords or check your spelling
 								</p>
 								<button
 									onClick={() => setSearchQuery('')}
-									className="px-4 py-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-md hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors text-sm font-medium"
+									className="px-4 py-2 bg-purple-100/60 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-md hover:bg-purple-200/60 dark:hover:bg-purple-900/50 transition-all duration-200 text-sm font-medium backdrop-blur-sm border border-purple-200/30"
 								>
 									Clear search
 								</button>
@@ -663,7 +767,7 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 								</p>
 								<button
 									onClick={() => setIsNewChatModalOpen(true)}
-									className="px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition-colors text-sm font-medium"
+									className="px-4 py-2 bg-purple-500/80 text-white rounded-md hover:bg-purple-600/80 transition-all duration-200 text-sm font-medium backdrop-blur-sm shadow-lg"
 								>
 									Start chatting
 								</button>
@@ -671,7 +775,7 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 						)}
 					</div>
 				) : (
-					<div className="divide-y divide-gray-100 dark:divide-gray-700">
+					<div className="divide-y divide-gray-100/30 dark:divide-gray-700/30">
 						{filteredContacts.map(renderChatItem)}
 					</div>
 				)}
@@ -680,13 +784,118 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 				{showScrollTop && (
 					<button
 						onClick={scrollToTop}
-						className="fixed bottom-6 right-6 w-12 h-12 bg-purple-500 hover:bg-purple-600 text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 z-10 hover:scale-105"
+						className="fixed bottom-6 right-6 w-12 h-12 bg-purple-500/90 hover:bg-purple-600/90 text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 z-10 hover:scale-105 backdrop-blur-sm border border-white/20"
 						aria-label="Scroll to top"
 					>
 						<ChevronDown className="h-6 w-6 rotate-180" />
 					</button>
 				)}
 			</div>
+
+			{/* Context Menu with liquid glass effect */}
+			{contextMenu && (
+				<div
+					ref={contextMenuRef}
+					className="fixed z-50 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-white/30 dark:border-gray-600/30 rounded-xl shadow-2xl min-w-[200px] overflow-hidden"
+					style={{
+						left: Math.min(contextMenu.x, window.innerWidth - 220),
+						top: Math.min(contextMenu.y, window.innerHeight - 400)
+					}}
+				>
+					<div className="py-2">
+						<button
+							onClick={() => {
+								// Mark as unread functionality
+								setContextMenu(null);
+							}}
+							className="w-full px-4 py-3 text-left hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 flex items-center space-x-3 text-gray-800 dark:text-gray-200"
+						>
+							<MessageCircleMore className="w-4 h-4" />
+							<span>Mark as unread</span>
+						</button>
+
+						<button
+							onClick={() => {
+								// Pin to top functionality
+								setContextMenu(null);
+							}}
+							className="w-full px-4 py-3 text-left hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 flex items-center space-x-3 text-gray-800 dark:text-gray-200"
+						>
+							<Pin className="w-4 h-4" />
+							<span>Pin to top</span>
+						</button>
+
+						<button
+							onClick={() => {
+								// Add to favorites functionality
+								setContextMenu(null);
+							}}
+							className="w-full px-4 py-3 text-left hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 flex items-center space-x-3 text-gray-800 dark:text-gray-200"
+						>
+							<Star className="w-4 h-4" />
+							<span>Add to favorites</span>
+						</button>
+
+						<button
+							onClick={() => {
+								// Mute functionality
+								setContextMenu(null);
+							}}
+							className="w-full px-4 py-3 text-left hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 flex items-center space-x-3 text-gray-800 dark:text-gray-200"
+						>
+							<VolumeX className="w-4 h-4" />
+							<span>Mute</span>
+						</button>
+
+						<div className="border-t border-gray-200/30 dark:border-gray-600/30 my-2"></div>
+
+						<button
+							onClick={() => {
+								selectedChats.forEach(chatId => archiveChat(chatId));
+								setContextMenu(null);
+							}}
+							className="w-full px-4 py-3 text-left hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 flex items-center space-x-3 text-gray-800 dark:text-gray-200"
+						>
+							<Archive className="w-4 h-4" />
+							<span>Archive</span>
+						</button>
+
+						<button
+							onClick={() => {
+								// Clear messages functionality
+								setContextMenu(null);
+							}}
+							className="w-full px-4 py-3 text-left hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 flex items-center space-x-3 text-gray-800 dark:text-gray-200"
+						>
+							<Trash2 className="w-4 h-4" />
+							<span>Clear messages</span>
+						</button>
+
+						<button
+							onClick={() => {
+								// Delete chat functionality
+								setContextMenu(null);
+							}}
+							className="w-full px-4 py-3 text-left hover:bg-white/20 dark:hover:bg-red-700/20 transition-all duration-200 flex items-center space-x-3 text-red-600 dark:text-red-400"
+						>
+							<Trash2 className="w-4 h-4" />
+							<span>Delete</span>
+						</button>
+
+						<div className="border-t border-gray-200/30 dark:border-gray-600/30 my-2"></div>
+
+						<button
+							onClick={() => handlePopOutToggle(contextMenu.chat.conversationId)}
+							className="w-full px-4 py-3 text-left hover:bg-white/20 dark:hover:bg-gray-700/20 transition-all duration-200 flex items-center space-x-3 text-gray-800 dark:text-gray-200"
+						>
+							<ExternalLink className="w-4 h-4" />
+							<span>
+								{popOutChats?.includes(contextMenu.chat.conversationId) ? 'Close chat' : 'Pop-out chat'}
+							</span>
+						</button>
+					</div>
+				</div>
+			)}
 
 			{/* New Chat Modal */}
 			<NewChatModal
@@ -696,6 +905,6 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 			/>
 		</div>
 	);
-};
+}
 
 export default ChatListPanel;

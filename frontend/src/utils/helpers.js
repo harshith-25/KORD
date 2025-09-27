@@ -1,32 +1,5 @@
-export const formatTimestamp = (timestamp) => {
-  const date = new Date(timestamp);
-  // Example: "10:30 AM - Jun 23, 2025"
-  return (
-    date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
-    " - " +
-    date.toLocaleDateString([], {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    })
-  );
-};
-
-export const truncateText = (text, maxLength) => {
-  if (text.length <= maxLength) {
-    return text;
-  }
-  return text.substring(0, maxLength) + "...";
-};
-
-// Add more general utility functions as needed
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 
-/**
- * Safely format time for display
- * @param {string|Date} time - The time to format
- * @returns {string} Formatted time string
- */
 export const formatTimeSafe = (time) => {
   try {
     if (!time) return "";
@@ -39,11 +12,11 @@ export const formatTimeSafe = (time) => {
   }
 };
 
-/**
- * Format date separator for chat
- * @param {string|Date} date - The date to format
- * @returns {string} Formatted date string
- */
+// /**
+//  * Format date separator for chat
+//  * @param {string|Date} date - The date to format
+//  * @returns {string} Formatted date string
+//  */
 export const formatDateSeparator = (date) => {
   try {
     const parsedDate = new Date(date);
@@ -60,12 +33,12 @@ export const formatDateSeparator = (date) => {
   }
 };
 
-/**
- * Safely compare if two dates are on the same day
- * @param {string|Date} date1 - First date
- * @param {string|Date} date2 - Second date
- * @returns {boolean} True if dates are on the same day
- */
+// /**
+//  * Safely compare if two dates are on the same day
+//  * @param {string|Date} date1 - First date
+//  * @param {string|Date} date2 - Second date
+//  * @returns {boolean} True if dates are on the same day
+//  */
 export const isSameDaySafe = (date1, date2) => {
   try {
     if (!date1 || !date2) return false;
@@ -79,12 +52,12 @@ export const isSameDaySafe = (date1, date2) => {
   }
 };
 
-/**
- * Determine if messages should be grouped together
- * @param {Object} currentMsg - Current message
- * @param {Object} prevMsg - Previous message
- * @returns {boolean} True if messages should be grouped
- */
+// /**
+//  * Determine if messages should be grouped together
+//  * @param {Object} currentMsg - Current message
+//  * @param {Object} prevMsg - Previous message
+//  * @returns {boolean} True if messages should be grouped
+//  */
 export const shouldGroupMessage = (currentMsg, prevMsg) => {
   if (!prevMsg || !currentMsg) return false;
   if (!currentMsg.time || !prevMsg.time) return false;
@@ -111,11 +84,11 @@ export const shouldGroupMessage = (currentMsg, prevMsg) => {
   }
 };
 
-/**
- * Generate initials from a name
- * @param {string} name - Full name
- * @returns {string} Initials (max 2 characters)
- */
+// /**
+//  * Generate initials from a name
+//  * @param {string} name - Full name
+//  * @returns {string} Initials (max 2 characters)
+//  */
 export const getInitials = (name) => {
   if (!name || typeof name !== "string") return "??";
   return name
@@ -126,25 +99,25 @@ export const getInitials = (name) => {
     .slice(0, 2);
 };
 
-/**
- * Check if a chat is a group or channel
- * @param {Object} chat - Chat object
- * @returns {boolean} True if it's a group or channel
- */
-export const isGroupOrChannel = (chat) => {
-  if (!chat) return false;
-  return (
-    chat.type === "group" || chat.type === "channel" || chat.isGroup === true
-  );
-};
+// /**
+//  * Check if a chat is a group or channel
+//  * @param {Object} chat - Chat object
+//  * @returns {boolean} True if it's a group or channel
+//  */
+// export const isGroupOrChannel = (chat) => {
+//   if (!chat) return false;
+//   return (
+//     chat.type === "group" || chat.type === "channel" || chat.isGroup === true
+//   );
+// };
 
-/**
- * Get user display name for messages
- * @param {Object} message - Message object
- * @param {Object} chat - Chat object
- * @param {Array} contacts - Array of contacts
- * @returns {string} Display name or null for direct messages
- */
+// /**
+//  * Get user display name for messages
+//  * @param {Object} message - Message object
+//  * @param {Object} chat - Chat object
+//  * @param {Array} contacts - Array of contacts
+//  * @returns {string} Display name or null for direct messages
+//  */
 export const getMessageDisplayName = (message, chat, contacts) => {
   // Only show names in groups/channels
   if (!isGroupOrChannel(chat)) return null;
@@ -157,13 +130,13 @@ export const getMessageDisplayName = (message, chat, contacts) => {
   return sender?.name || message.senderName || "Unknown User";
 };
 
-/**
- * Get avatar for message sender
- * @param {Object} message - Message object
- * @param {Object} chat - Chat object
- * @param {Array} contacts - Array of contacts
- * @returns {Object|null} Avatar info object or null
- */
+// /**
+//  * Get avatar for message sender
+//  * @param {Object} message - Message object
+//  * @param {Object} chat - Chat object
+//  * @param {Array} contacts - Array of contacts
+//  * @returns {Object|null} Avatar info object or null
+//  */
 export const getMessageAvatar = (message, chat, contacts) => {
   // Only show avatars in groups/channels
   if (!isGroupOrChannel(chat)) return null;
@@ -180,12 +153,12 @@ export const getMessageAvatar = (message, chat, contacts) => {
   };
 };
 
-/**
- * Validate message object
- * @param {any} message - Message to validate
- * @param {number} index - Message index for logging
- * @returns {boolean} True if message is valid
- */
+// /**
+//  * Validate message object
+//  * @param {any} message - Message to validate
+//  * @param {number} index - Message index for logging
+//  * @returns {boolean} True if message is valid
+//  */
 export const isValidMessage = (message, index) => {
   if (!message || typeof message !== "object") {
     console.warn("Invalid message at index", index, message);
@@ -194,20 +167,20 @@ export const isValidMessage = (message, index) => {
   return true;
 };
 
-/**
- * Get message content safely
- * @param {Object} message - Message object
- * @returns {string} Message content
- */
+// /**
+//  * Get message content safely
+//  * @param {Object} message - Message object
+//  * @returns {string} Message content
+//  */
 export const getMessageContent = (message) => {
   return message.text || message.content || message.message || "No content";
 };
 
-/**
- * Generate gradient colors for avatars
- * @param {string} id - User ID or name
- * @returns {string} Tailwind gradient class
- */
+// /**
+//  * Generate gradient colors for avatars
+//  * @param {string} id - User ID or name
+//  * @returns {string} Tailwind gradient class
+//  */
 export const getAvatarGradient = (id) => {
   const gradients = [
     "from-purple-400 to-purple-600",

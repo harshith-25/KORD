@@ -1,395 +1,437 @@
 import Conversation from "../models/ConversationModel.js";
-import Message from "../models/MessagesModel.js";
-import Channel from "../models/ChannelModel.js";
+import User from "../models/UserModel.js";
+import { validationResult } from "express-validator";
 
-class ConversationController {
-  // Get or create conversation based on type and participants
-  async getOrCreateConversation(req, res) {
-    try {
-      const { type, participants, name } = req.body;
-      const userId = req.user._id;
+// @desc    Get or create a direct conversation
+// @route   POST /api/conversations/direct
+const getOrCreateDirectConversation = async (req, res) => {
+  const { userId } = req.body;
+  const currentUserId = req.user.id;
 
-      let conversation;
-
-      if (type === "direct") {
-        if (participants.length !== 2) {
-          return res.status(400).json({
-            error: "Direct conversation needs exactly 2 participants",
-          });
-        }
-
-        conversation = await Conversation.findDirectConversation(
-          participants[0],
-          participants[1]
-        );
-
-        if (!conversation) {
-          conversation = new Conversation({
-            type: "direct",
-            participants: participants.map((p) => ({
-              user: p,
-              role: "member",
-            })),
-            createdBy: userId,
-            directParticipants: participants,
-          });
-          await conversation.save();
-        }
-      } else {
-        conversation = new Conversation({
-          type,
-          name,
-          participants: participants.map((p) => ({ user: p, role: "member" })),
-          createdBy: userId,
-        });
-        await conversation.save();
-      }
-
-      return res.json({ conversation });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
+  if (currentUserId === userId) {
+    return res
+      .status(400)
+      .json({ message: "Cannot create a direct conversation with yourself." });
   }
 
-  // Send message to conversation
-  async sendMessage(req, res) {
-    try {
-      const { conversationId } = req.params;
-      const { content, type = "text", replyTo } = req.body;
-      const senderId = req.user._id;
+  try {
+    const sortedIds = [currentUserId.toString(), userId.toString()].sort();
+    const conversationId = `direct_${sortedIds[0]}_${sortedIds[1]}`;
 
-      const conversation = await Conversation.findOne({
-        conversationId,
-        "participants.user": senderId,
-        "participants.isActive": true,
-      });
+    // Find the conversation and automatically populate the user details
+    let conversation = await Conversation.findOne({ conversationId })
+      .populate("directParticipants")
+      .populate("participants.user");
 
-      if (!conversation) {
+    if (!conversation) {
+      const usersExist =
+        (await User.countDocuments({
+          _id: { $in: [currentUserId, userId] },
+        })) === 2;
+      if (!usersExist) {
         return res
           .status(404)
-          .json({ error: "Conversation not found or access denied" });
+          .json({ message: "One or more users not found." });
       }
 
-      const message = new Message({
-        sender: senderId,
+      conversation = await Conversation.create({
         conversationId,
-        content,
-        type,
-        replyTo,
-        // Set legacy fields for backward compatibility
-        ...(conversation.type === "direct"
-          ? {
-              recipient: conversation.directParticipants.find(
-                (id) => id.toString() !== senderId.toString()
-              ),
-            }
-          : {
-              channel:
-                conversation.type === "channel" ? conversation._id : null,
-            }),
+        type: "direct",
+        directParticipants: [currentUserId, userId],
+        participants: [{ user: currentUserId }, { user: userId }],
+        createdBy: currentUserId,
       });
 
-      await message.save();
-      await conversation.updateLastMessage(message);
-
-      const populatedMessage = await Message.findById(message._id)
-        .populate("sender", "name avatar")
-        .populate("replyTo", "content sender");
-
-      return res.json({ message: populatedMessage });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
+      // If a new conversation was created, we need to populate it before sending the response
+      conversation = await conversation
+        .populate("directParticipants")
+        .populate("participants.user");
     }
+
+    res.status(200).json(conversation);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Create a new group or channel
+// @route   POST /api/conversations
+const createGroupOrChannel = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+  const { type, name, description, participants, settings, isPublic } =
+    req.body;
+  const currentUserId = req.user.id;
+
+  if (type === "direct") {
+    return res.status(400).json({
+      message: "Use POST /api/conversations/direct for direct chats.",
+    });
   }
 
-  // Get conversation messages
-  async getMessages(req, res) {
-    try {
-      const { conversationId } = req.params;
-      const { page = 1, limit = 50 } = req.query;
-      const userId = req.user._id;
-
-      const conversation = await Conversation.findOne({
-        conversationId,
-        "participants.user": userId,
-        "participants.isActive": true,
-      });
-
-      if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found" });
-      }
-
-      const messages = await Message.findConversationMessages(conversationId, {
-        limit: parseInt(limit),
-        skip: (parseInt(page) - 1) * parseInt(limit),
-        userId,
-      });
-
-      return res.json({ messages });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
+  try {
+    const allParticipants = [...new Set([...participants, currentUserId])];
+    if (allParticipants.length < 2) {
+      return res
+        .status(400)
+        .json({ message: `${type}s must have at least 2 members.` });
     }
+
+    const newConversation = await Conversation.create({
+      type,
+      name,
+      description,
+      isPublic,
+      participants: allParticipants.map((userId) => ({ user: userId })),
+      createdBy: currentUserId,
+      settings: settings || {},
+    });
+
+    // Populate the user details for the new conversation before sending
+    const populatedConversation = await newConversation.populate(
+      "participants.user"
+    );
+
+    res.status(201).json(populatedConversation);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
+};
 
-  // Get user conversations
-  async getUserConversations(req, res) {
-    try {
-      const userId = req.user._id;
-      const { type, page = 1, limit = 20 } = req.query;
+// @desc    Get a user's conversations
+// @route   GET /api/conversations
+const getUserConversations = async (req, res) => {
+  const currentUserId = req.user.id;
+  const { page = 1, limit = 20, type = null } = req.query;
 
-      const conversations = await Conversation.findUserConversations(userId, {
-        type,
-        limit: parseInt(limit),
-        skip: (parseInt(page) - 1) * parseInt(limit),
-      });
-
-      return res.json({ conversations });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
+  try {
+    const query = {
+      "participants.user": currentUserId,
+      "participants.isActive": true,
+    };
+    if (type) {
+      query.type = type;
     }
+
+    const conversations = await Conversation.find(query)
+      .populate("lastMessage.sender", "firstName lastName email image")
+      // Updated: Populate participants with all user details
+      .populate(
+        "participants.user",
+        "firstName lastName email username image name avatar isOnline"
+      )
+      .sort({ lastActivity: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    res.status(200).json(conversations);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
+};
 
-  // Add participant to conversation
-  async addParticipant(req, res) {
-    try {
-      const { conversationId } = req.params;
-      const { userId: newUserId, role = "member" } = req.body;
-      const requesterId = req.user._id;
+// @desc    Get a single conversation by ID
+// @route   GET /api/conversations/:conversationId
+const getConversationById = async (req, res) => {
+  const { conversationId } = req.params;
+  const currentUserId = req.user.id;
 
-      const conversation = await Conversation.findOne({
-        conversationId,
-        "participants.user": requesterId,
-        "participants.isActive": true,
-      });
+  try {
+    const conversation = await Conversation.findOne({ conversationId })
+      .populate(
+        "participants.user",
+        "firstName lastName name avatar email username image"
+      )
+      // Updated: Populate createdBy with full user details
+      .populate(
+        "createdBy",
+        "firstName lastName name avatar email username image"
+      )
+      .populate("pinnedMessages.messageId");
 
-      if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found" });
-      }
-
-      if (conversation.type === "direct") {
-        return res
-          .status(400)
-          .json({ error: "Cannot add participants to direct conversation" });
-      }
-
-      const requesterRole = conversation.getParticipantRole(requesterId);
-      if (
-        requesterRole !== "admin" &&
-        !conversation.settings.allowMemberToAddOthers
-      ) {
-        return res.status(403).json({ error: "Permission denied" });
-      }
-
-      await conversation.addParticipant(newUserId, role);
-      return res.json({ message: "Participant added successfully" });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found." });
     }
-  }
 
-  // Remove participant from conversation
-  async removeParticipant(req, res) {
-    try {
-      const { conversationId } = req.params;
-      const { userId: targetUserId } = req.body;
-      const requesterId = req.user._id;
-
-      const conversation = await Conversation.findOne({
-        conversationId,
-        "participants.user": requesterId,
-        "participants.isActive": true,
-      });
-
-      if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found" });
-      }
-
-      if (conversation.type === "direct") {
-        return res.status(400).json({
-          error: "Cannot remove participants from direct conversation",
-        });
-      }
-
-      const requesterRole = conversation.getParticipantRole(requesterId);
-      if (
-        requesterRole !== "admin" &&
-        requesterId.toString() !== targetUserId.toString()
-      ) {
-        return res.status(403).json({ error: "Permission denied" });
-      }
-
-      await conversation.removeParticipant(targetUserId);
-      return res.json({ message: "Participant removed successfully" });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
+    const isParticipant = conversation.participants.some(
+      (p) => p.user._id.toString() === currentUserId
+    );
+    if (!isParticipant && !conversation.isPublic) {
+      return res.status(403).json({ message: "Access denied." });
     }
+
+    res.status(200).json(conversation);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
+};
 
-  // Update conversation info
-  async updateConversation(req, res) {
-    try {
-      const { conversationId } = req.params;
-      const { name, description, avatar } = req.body;
-      const userId = req.user._id;
+// @desc    Update conversation info
+// @route   PUT /api/conversations/:conversationId
+const updateConversationInfo = async (req, res) => {
+  const { conversationId } = req.params;
+  const currentUserId = req.user.id;
+  const { name, description, avatar, settings, isPublic } = req.body;
 
-      const conversation = await Conversation.findOne({
-        conversationId,
-        "participants.user": userId,
-        "participants.isActive": true,
+  try {
+    const conversation = await Conversation.findOne({ conversationId });
+    if (!conversation)
+      return res.status(404).json({ message: "Conversation not found." });
+
+    const currentUserParticipant = conversation.participants.find(
+      (p) => p.user.toString() === currentUserId
+    );
+    const canEdit =
+      currentUserParticipant &&
+      (currentUserParticipant.role === "admin" ||
+        currentUserParticipant.permissions.canEditInfo);
+
+    if (!canEdit) {
+      return res.status(403).json({
+        message: "You do not have permission to edit this conversation.",
       });
-
-      if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found" });
-      }
-
-      const userRole = conversation.getParticipantRole(userId);
-      if (
-        userRole !== "admin" &&
-        !conversation.settings.allowMemberToEditInfo
-      ) {
-        return res.status(403).json({ error: "Permission denied" });
-      }
-
-      if (name) conversation.name = name;
-      if (description) conversation.description = description;
-      if (avatar) conversation.avatar = avatar;
-
-      await conversation.save();
-      return res.json({ conversation });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
     }
-  }
 
-  // Archive conversation for user
-  async archiveConversation(req, res) {
-    try {
-      const { conversationId } = req.params;
-      const userId = req.user._id;
+    conversation.name = name || conversation.name;
+    conversation.description = description || conversation.description;
+    conversation.avatar = avatar || conversation.avatar;
+    conversation.settings = { ...conversation.settings, ...settings };
+    conversation.isPublic =
+      isPublic !== undefined ? isPublic : conversation.isPublic;
 
-      const conversation = await Conversation.findOne({
-        conversationId,
-        "participants.user": userId,
-        "participants.isActive": true,
-      });
+    await conversation.save();
 
-      if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found" });
-      }
-
-      if (!conversation.archivedBy.includes(userId)) {
-        conversation.archivedBy.push(userId);
-        await conversation.save();
-      }
-
-      return res.json({ message: "Conversation archived" });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  }
-
-  // Get conversation info
-  async getConversationInfo(req, res) {
-    try {
-      const { conversationId } = req.params;
-      const userId = req.user._id;
-
-      const conversation = await Conversation.findOne({
-        conversationId,
-        "participants.user": userId,
-        "participants.isActive": true,
-      })
-        .populate("participants.user", "name avatar email")
-        .populate("createdBy", "name avatar");
-
-      if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found" });
-      }
-
-      return res.json({ conversation });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  }
-
-  // Mark messages as read
-  async markAsRead(req, res) {
-    try {
-      const { conversationId } = req.params;
-      const { messageId } = req.body;
-      const userId = req.user._id;
-
-      const conversation = await Conversation.findOne({
-        conversationId,
-        "participants.user": userId,
-        "participants.isActive": true,
-      });
-
-      if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found" });
-      }
-
-      // Update participant's last read message
-      const participant = conversation.participants.find(
-        (p) => p.user.toString() === userId.toString()
+    // Updated: Re-fetch and populate the document to return the complete object
+    const populatedConversation = await Conversation.findOne({ conversationId })
+      .populate(
+        "participants.user",
+        "firstName lastName name avatar email username image"
+      )
+      .populate(
+        "createdBy",
+        "firstName lastName name avatar email username image"
       );
 
-      if (participant) {
-        participant.lastReadMessageId = messageId;
-        participant.lastReadAt = new Date();
-        await conversation.save();
+    res.status(200).json(populatedConversation);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Join a public group or channel
+// @route   POST /api/conversations/:conversationId/join
+const joinConversation = async (req, res) => {
+  const { conversationId } = req.params;
+  const currentUserId = req.user.id;
+
+  try {
+    const conversation = await Conversation.findOne({ conversationId });
+    if (!conversation)
+      return res.status(404).json({ message: "Conversation not found." });
+
+    if (conversation.isPublic && !conversation.settings.requireApprovalToJoin) {
+      const isAlreadyMember = conversation.participants.some(
+        (p) => p.user.toString() === currentUserId
+      );
+      if (isAlreadyMember) {
+        return res.status(400).json({ message: "Already a member." });
       }
 
-      return res.json({ message: "Marked as read" });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  }
-
-  // Migration helper: Convert channel to conversation
-  async migrateChannelToConversation(channelId) {
-    try {
-      const channel = await Channel.findById(channelId);
-      if (!channel) throw new Error("Channel not found");
-
-      const conversation = new Conversation({
-        conversationId: `channel_${channelId}`,
-        type: "channel",
-        name: channel.name,
-        description: channel.description,
-        avatar: channel.avatar,
-        participants: channel.members.map((member) => ({
-          user: member.user,
-          role: member.role,
-          joinedAt: member.joinedAt,
-          isActive: member.isActive,
-          permissions: member.permissions,
-          lastReadMessageId: member.lastReadMessageId,
-          lastReadAt: member.lastReadAt,
-        })),
-        createdBy: channel.createdBy,
-        lastMessage: channel.lastMessage,
-        lastActivity: channel.lastActivity,
-        isActive: channel.isActive,
-        isArchived: channel.isArchived,
-        isPrivate: channel.isPrivate,
-        settings: channel.settings,
-        messageCount: channel.messageCount,
-        category: channel.category,
-        pinnedMessages: channel.pinnedMessages,
-      });
-
+      conversation.participants.push({ user: currentUserId, role: "member" });
       await conversation.save();
-
-      // Update channel with conversationId
-      channel.conversationId = conversation.conversationId;
-      await channel.save();
-
-      return conversation;
-    } catch (error) {
-      throw error;
+      return res
+        .status(200)
+        .json({ message: "Joined conversation successfully." });
+    } else if (conversation.settings.requireApprovalToJoin) {
+      const isAlreadyRequested = conversation.joinRequests.some(
+        (r) => r.user.toString() === currentUserId
+      );
+      if (isAlreadyRequested) {
+        return res
+          .status(400)
+          .json({ message: "Join request already submitted." });
+      }
+      conversation.joinRequests.push({
+        user: currentUserId,
+        message: req.body.message,
+      });
+      await conversation.save();
+      return res
+        .status(202)
+        .json({ message: "Join request submitted for approval." });
+    } else {
+      return res
+        .status(403)
+        .json({ message: "Cannot join this conversation directly." });
     }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
-}
+};
 
-export default new ConversationController();
+// @desc    Add a member to a group or channel
+// @route   POST /api/conversations/:conversationId/add
+const addMember = async (req, res) => {
+  const { conversationId } = req.params;
+  const { userId } = req.body;
+  const currentUserId = req.user.id;
+
+  try {
+    const conversation = await Conversation.findOne({ conversationId });
+    if (!conversation)
+      return res.status(404).json({ message: "Conversation not found." });
+
+    const currentUserParticipant = conversation.participants.find(
+      (p) => p.user.toString() === currentUserId
+    );
+    const canAdd =
+      currentUserParticipant &&
+      (currentUserParticipant.role === "admin" ||
+        currentUserParticipant.permissions.canAddMembers);
+
+    if (!canAdd) {
+      return res
+        .status(403)
+        .json({ message: "You do not have permission to add members." });
+    }
+
+    const isAlreadyMember = conversation.participants.some(
+      (p) => p.user.toString() === userId && p.isActive
+    );
+    if (isAlreadyMember) {
+      return res.status(400).json({ message: "User is already a member." });
+    }
+
+    const userToAdd = await User.findById(userId);
+    if (!userToAdd)
+      return res.status(404).json({ message: "User to add not found." });
+
+    conversation.participants.push({ user: userId, role: "member" });
+    await conversation.save();
+
+    res.status(200).json({ message: "Member added successfully." });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Leave a group or channel
+// @route   POST /api/conversations/:conversationId/leave
+const leaveConversation = async (req, res) => {
+  const { conversationId } = req.params;
+  const currentUserId = req.user.id;
+
+  try {
+    const conversation = await Conversation.findOne({ conversationId });
+    if (!conversation)
+      return res.status(404).json({ message: "Conversation not found." });
+
+    const participant = conversation.participants.find(
+      (p) => p.user.toString() === currentUserId
+    );
+    if (!participant)
+      return res
+        .status(400)
+        .json({ message: "You are not a member of this conversation." });
+
+    participant.isActive = false;
+    participant.leftAt = new Date();
+    await conversation.save();
+
+    res.status(200).json({ message: "Successfully left the conversation." });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get public groups and channels
+// @route   GET /api/conversations/public
+const getPublicConversations = async (req, res) => {
+  const { page = 1, limit = 20, type = ["group", "channel"] } = req.query;
+
+  try {
+    const conversations = await Conversation.find({
+      type: { $in: type },
+      isPublic: true,
+      isActive: true,
+      isArchived: false,
+    })
+      .select(
+        "name description avatar type memberCount lastActivity participants"
+      )
+      .populate(
+        "participants.user",
+        "firstName lastName name avatar email username image isOnline"
+      )
+      .sort({ memberCount: -1, lastActivity: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    res.status(200).json(conversations);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Remove a member from a group or channel
+// @route   DELETE /api/conversations/:conversationId/members/:userId
+const removeMember = async (req, res) => {
+  const { conversationId, userId } = req.params;
+  const currentUserId = req.user.id;
+
+  try {
+    const conversation = await Conversation.findOne({ conversationId });
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found." });
+    } // Check if the current user is an admin
+
+    const currentUserParticipant = conversation.participants.find(
+      (p) => p.user.toString() === currentUserId && p.isActive
+    );
+    if (!currentUserParticipant || currentUserParticipant.role !== "admin") {
+      return res.status(403).json({
+        message: "Only administrators can remove members.",
+      });
+    } // Find the participant to be removed
+
+    const memberToRemove = conversation.participants.find(
+      (p) => p.user.toString() === userId && p.isActive
+    );
+    if (!memberToRemove) {
+      return res.status(404).json({ message: "User is not an active member." });
+    } // Prevent an admin from removing the last admin
+
+    const activeAdmins = conversation.participants.filter(
+      (p) => p.role === "admin" && p.isActive
+    );
+    if (activeAdmins.length === 1 && memberToRemove.role === "admin") {
+      return res.status(400).json({
+        message: "Cannot remove the last administrator.",
+      });
+    } // Set the user's isActive status to false
+
+    memberToRemove.isActive = false;
+    memberToRemove.removedBy = currentUserId;
+    memberToRemove.removedAt = new Date();
+    await conversation.save();
+
+    res.status(200).json({ message: "Member removed successfully." });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export {
+  getOrCreateDirectConversation,
+  createGroupOrChannel,
+  getUserConversations,
+  getConversationById,
+  updateConversationInfo,
+  joinConversation,
+  addMember,
+  leaveConversation,
+  getPublicConversations,
+  removeMember,
+};

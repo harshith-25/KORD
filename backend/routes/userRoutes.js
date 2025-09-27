@@ -19,7 +19,7 @@ import {
   searchContacts,
   getContactsForDMList,
   getAllContacts,
-  initiateDirectMessage, // <-- IMPORT THE NEW FUNCTION HERE
+  initiateDirectMessage,
 } from "../controllers/ContactController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/uploadMiddleware.js"; // For profile image uploads
@@ -40,12 +40,12 @@ router.put("/change-password", verifyToken, changePassword);
 router.delete("/delete-account", verifyToken, deleteAccount);
 
 // --- Contact/User Management ---
-router.post("/users/search-contacts", verifyToken, searchContacts); // Your existing route
-router.get("/users/contacts/dm-list", verifyToken, getContactsForDMList); // Your existing route
-router.get("/users/all-contacts", verifyToken, getAllContacts); // Your existing route
+router.post("/search-contacts", verifyToken, searchContacts); // Your existing route
+router.get("/contacts/dm-list", verifyToken, getContactsForDMList); // Your existing route
+router.get("/all-contacts", verifyToken, getAllContacts); // Your existing route
 
 // --- NEW ROUTE FOR DM INITIATION ---
-router.post("/users/initiate-dm", verifyToken, initiateDirectMessage); // <-- ADD THIS ROUTE
+router.post("/initiate-dm", verifyToken, initiateDirectMessage);
 
 
 // --- User Status & Live Location ---

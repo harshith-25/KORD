@@ -1,6 +1,4 @@
-// frontend/src/routes/AppRoutes.jsx
-
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 
@@ -8,7 +6,6 @@ import { useAuthStore } from '@/store/authStore';
 import LoginPage from '@/pages/Auth/LoginPage';
 import RegisterPage from '@/pages/Auth/RegisterPage';
 import DashboardPage from '@/pages/DashboardPage';
-import ChatPage from '@/pages/Chat/ChatPage';
 import SettingsPage from '@/pages/Settings/SettingsModal';
 import NotFoundPage from '@/pages/NotFoundPage';
 
@@ -65,7 +62,7 @@ const AppRoutes = () => {
 					path="/chat/:chatId?" // :chatId is optional, so /chat also works
 					element={
 						<AuthGuard>
-							<ChatPage />
+							<DashboardPage />
 						</AuthGuard>
 					}
 				/>

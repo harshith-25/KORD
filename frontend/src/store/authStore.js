@@ -1,5 +1,3 @@
-// frontend/src/store/authStore.js
-
 import { create } from "zustand";
 import api from "@/utils/axiosInstance";
 

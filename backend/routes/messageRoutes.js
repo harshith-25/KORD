@@ -1,6 +1,6 @@
 import express from "express";
 import {
-  sendMessage, // <-- NEWLY UPDATED
+  sendMessage,
   getMessages,
   editMessage,
   deleteMessage,
@@ -35,12 +35,12 @@ router.post(
 );
 
 // Get messages for a specific direct chat or channel (now with pagination/search)
-router.get("/:id", getMessages);
+router.get("/:conversationId", getMessages);
 
 // Message Management Enhancements
 router.put(
   "/:messageId",
-  upload.single("file"), // This will now correctly access 'upload'
+  upload.single("file"),
   validateMessageId,
   validateEditMessage,
   editMessage
@@ -59,6 +59,7 @@ router.post(
   validateAddReaction,
   addReaction
 );
+
 router.delete(
   "/:messageId/react/:emoji",
   validateMessageId,
@@ -76,3 +77,55 @@ router.post(
 router.get("/search", validateSearchMessages, searchMessages);
 
 export default router;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// import express from 'express';
+// import {
+//     sendMessage,
+//     getMessages,
+//     editMessage,
+//     deleteMessage,
+//     addReaction,
+//     removeReaction,
+//     forwardMessage,
+//     searchMessages
+// } from '../controllers/messageController.js';
+
+// import { protect } from '../middleware/authMiddleware.js'; // Your authentication middleware
+// import upload from '../middleware/multerMiddleware.js'; // Your multer middleware
+
+// const router = express.Router();
+
+// // The upload middleware needs to run before the controller
+// router.post('/', protect, upload.single('file'), sendMessage); 
+// router.get('/:conversationId', protect, getMessages);
+// router.put('/:messageId', protect, editMessage);
+// router.delete('/:messageId', protect, deleteMessage);
+// router.post('/:messageId/react', protect, addReaction);
+// router.delete('/:messageId/react', protect, removeReaction);
+// router.post('/:messageId/forward', protect, forwardMessage);
+// router.get('/search', protect, searchMessages);
+
+// export default router;

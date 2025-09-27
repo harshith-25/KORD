@@ -15,7 +15,7 @@ const BREAKPOINTS = {
 
 // Panel dimensions
 const MIN_PANEL_WIDTH = 300;
-const MAX_PANEL_WIDTH = 600;
+const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 350;
 const MOBILE_PANEL_WIDTH = '100vw';
 
@@ -322,13 +322,13 @@ const AppLayout = ({ children }) => {
 			{/* Resizer Handle - Desktop only */}
 			{!isTablet && (
 				<div
-					className={`w-1 bg-gray-300 dark:bg-gray-600 cursor-ew-resize hover:bg-purple-500 dark:hover:bg-purple-400 transition-colors duration-150 flex-shrink-0 relative ${isResizing ? 'bg-purple-500 dark:bg-purple-400' : ''}`}
+					className={`w-0.5 bg-gray-300 dark:bg-gray-600 cursor-ew-resize hover:bg-purple-500 dark:hover:bg-purple-400 transition-colors duration-150 flex-shrink-0 relative ${isResizing ? 'bg-purple-500 dark:bg-purple-400' : ''}`}
 					onMouseDown={handleMouseDown}
 					title="Drag to resize chat panel"
 				>
 					{/* Miniscus/handle in the center */}
 					<div
-						className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-6 bg-blue-400 dark:bg-blue-500 rounded-full opacity-70"
+						className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-6 bg-blue-400 z-1 dark:bg-white-800 rounded-full opacity-70"
 						style={{
 							boxShadow: '0 0 2px 0.5px rgba(0,0,0,0.08)',
 						}}

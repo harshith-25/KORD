@@ -1,8 +1,4 @@
-// frontend/src/utils/ApiRoutes.js
-
-// Define your HOST
-export const HOST =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+export const HOST = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 // --- Authentication Routes ---
 export const AUTH_ROUTES = "/api/auth";
@@ -32,16 +28,16 @@ export const STOP_LIVE_LOCATION_ROUTE = `${USERS_ROUTES}/live-location/stop`;
 export const GET_LIVE_LOCATION_ROUTE = `${USERS_ROUTES}/live-location`; // Append targetUserId later
 
 // --- Contact Routes (also under /api/users) ---
-export const SEARCH_CONTACTS_ROUTE = `${USERS_ROUTES}/users/search-contacts`; // ✅ Matches backend
-export const GET_DM_CONTACTS_ROUTE = `${USERS_ROUTES}/users/contacts/dm-list`; // ✅ Matches backend
-export const GET_ALL_CONTACTS_ROUTE = `${USERS_ROUTES}/users/all-contacts`; // ✅ Matches backend
+export const SEARCH_CONTACTS_ROUTE = `${USERS_ROUTES}/search-contacts`; // ✅ Matches backend
+export const GET_DM_CONTACTS_ROUTE = `${USERS_ROUTES}/contacts/dm-list`; // ✅ Matches backend
+export const GET_ALL_CONTACTS_ROUTE = `${USERS_ROUTES}/all-contacts`; // ✅ Matches backend
 
 // --- NEW ROUTE FOR DM INITIATION ---
-export const INITIATE_DM_ROUTE = `${USERS_ROUTES}/users/initiate-dm`; // Matches new route in userRoutes.js
+export const INITIATE_DM_ROUTE = `${USERS_ROUTES}/initiate-dm`; // Matches new route in userRoutes.js
 
 // --- Message Routes ---
 export const MESSAGE_ROUTES = "/api/messages";
-export const GET_ALL_MESSAGES_ROUTE = `${MESSAGE_ROUTES}`; // Append conversationId later
+export const GET_ALL_MESSAGES_ROUTE = `${MESSAGE_ROUTES}` // Append conversationId later
 export const SEND_MESSAGE_ROUTE = `${MESSAGE_ROUTES}/send`; // Assuming a send endpoint
 
 // --- Channel Routes ---
@@ -50,6 +46,10 @@ export const CREATE_CHANNEL_ROUTE = `${CHANNEL_ROUTES}/create`;
 export const GET_CHANNEL_DETAILS_ROUTE = `${CHANNEL_ROUTES}`; // Append channelId later
 export const JOIN_CHANNEL_ROUTE = `${CHANNEL_ROUTES}/join`; // Append channelId later
 export const LEAVE_CHANNEL_ROUTE = `${CHANNEL_ROUTES}/leave`; // Append channelId later
+
+// --- Conversation Routes ---
+export const CONVERSATION_ROUTES = "/api/conversations";
+export const CREATE_DIRECT_CONVERSATION = `${CONVERSATION_ROUTES}/direct`
 
 // --- Notification Routes ---
 export const NOTIFICATION_ROUTES = "/api/notifications";

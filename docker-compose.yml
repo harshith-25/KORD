@@ -1,0 +1,51 @@
+name: kord-chat
+
+services:
+  mongo:
+    image: mongo:7.0.12
+    container_name: kord-mongodb
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - kord-chat
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kord-backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    ports:
+      - 5000:5000
+    networks:
+      - kord-chat
+    depends_on:
+      - mongo
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kord-frontend
+    restart: unless-stopped
+    env_file: ./frontend/.env
+    ports:
+      - 5173:5173
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - kord-chat
+    command: npm run dev -- --host
+    depends_on:
+      - api
+
+volumes:
+  mongo_data:
+networks:
+  kord-chat:
+    driver: bridge

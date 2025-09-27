@@ -1,12 +1,10 @@
-// frontend/src/pages/ChatPage.jsx
-
-import React, { useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom'; // Import useParams and useNavigate
+import { useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import ChatMainPanel from '@/pages/Chat/ChatMainPanel';
 import { useChatStore } from '@/store/chatStore';
 
 const ChatPage = () => {
-	const { chatId } = useParams(); // Get chatId from URL parameters
+	const { chatId } = useParams();
 	const navigate = useNavigate();
 	const { setSelectedChat, contacts, selectedChatId } = useChatStore();
 

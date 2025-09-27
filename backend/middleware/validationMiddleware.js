@@ -1,4 +1,3 @@
-// middleware/validationMiddleware.js
 import mongoose from "mongoose";
 import { body, param, query } from "express-validator";
 import { BadRequestError } from './errorHandler.js'; // Path relative to validationMiddleware.js
