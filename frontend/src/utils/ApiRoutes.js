@@ -1,4 +1,5 @@
-export const HOST = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+export const HOST =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 // --- Authentication Routes ---
 export const AUTH_ROUTES = "/api/auth";
@@ -37,8 +38,20 @@ export const INITIATE_DM_ROUTE = `${USERS_ROUTES}/initiate-dm`; // Matches new r
 
 // --- Message Routes ---
 export const MESSAGE_ROUTES = "/api/messages";
-export const GET_ALL_MESSAGES_ROUTE = `${MESSAGE_ROUTES}` // Append conversationId later
 export const SEND_MESSAGE_ROUTE = `${MESSAGE_ROUTES}/send`; // Assuming a send endpoint
+export const SEARCH_MESSAGES_ROUTE = `${MESSAGE_ROUTES}/search`;
+export const GET_ALL_MESSAGES_ROUTE = (conversationId) =>
+  `${MESSAGE_ROUTES}/${conversationId}`;
+export const EDIT_MESSAGE_ROUTE = (messageId) =>
+  `${MESSAGE_ROUTES}/${messageId}`;
+export const DELETE_MESSAGE_ROUTE = (messageId) =>
+  `${MESSAGE_ROUTES}/${messageId}`;
+export const ADD_REACTION_ROUTE = (messageId) =>
+  `${MESSAGE_ROUTES}/${messageId}/react`;
+export const REMOVE_REACTION_ROUTE = (messageId, emoji) =>
+  `${MESSAGE_ROUTES}/${messageId}/react/${emoji}`;
+export const FORWARD_MESSAGE_ROUTE = (messageId) =>
+  `${MESSAGE_ROUTES}/${messageId}/forward`;
 
 // --- Channel Routes ---
 export const CHANNEL_ROUTES = "/api/channels";
@@ -49,7 +62,7 @@ export const LEAVE_CHANNEL_ROUTE = `${CHANNEL_ROUTES}/leave`; // Append channelI
 
 // --- Conversation Routes ---
 export const CONVERSATION_ROUTES = "/api/conversations";
-export const CREATE_DIRECT_CONVERSATION = `${CONVERSATION_ROUTES}/direct`
+export const CREATE_DIRECT_CONVERSATION = `${CONVERSATION_ROUTES}/direct`;
 
 // --- Notification Routes ---
 export const NOTIFICATION_ROUTES = "/api/notifications";

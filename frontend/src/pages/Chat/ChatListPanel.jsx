@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, Edit, ListFilter, MessageCircleMore, Pin, Archive, Trash2, X, ChevronDown, Check, CheckCheck, Clock, Mic, Image, FileText, Video, MoreHorizontal, ArrowLeft, RefreshCw, Star, VolumeX, ExternalLink, MapPin } from 'lucide-react';
-import { useChatStore } from '@/store/chatStore';
 import { renderSkeleton } from '@/skeletons/ChatPanel';
 import { useAuthStore } from '@/store/authStore';
+import { useChatStore } from '@/store/chatStore';
+import { useConversationStore } from '@/store/conversationStore';
 import NewChatModal from './NewChatModal';
 import { isToday, isYesterday, isThisWeek } from "date-fns";
 
@@ -22,13 +23,17 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 	const {
 		contacts,
 		loadingContacts,
-		error,
 		fetchContacts,
+		// archiveChat, // Add these back if you implemented them in conversationStore
+		// deleteChat
+	} = useConversationStore();
+
+	const {
+		error,
 		selectedChatId,
 		setSelectedChat,
 		onlineUsers,
 		getTypingUsers,
-		isUserOnline
 	} = useChatStore();
 
 	const { user: currentUser } = useAuthStore();
@@ -54,39 +59,6 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 	const [pullDistance, setPullDistance] = useState(0);
 	const [isPulling, setIsPulling] = useState(false);
 
-	// Memoized filtered and sorted contacts
-	const filteredContacts = useMemo(() => {
-		let filtered = contacts;
-
-		// Apply search filter
-		if (searchQuery.trim()) {
-			filtered = filtered.filter(chat => {
-				const name = getChatName(chat).toLowerCase();
-				const lastMessage = getLastMessageContent(chat).toLowerCase();
-				const query = searchQuery.toLowerCase();
-				return name.includes(query) || lastMessage.includes(query);
-			});
-		}
-
-		// Apply category filter
-		switch (activeFilter) {
-			case 'unread':
-				filtered = filtered.filter(chat => (chat.unreadCount || 0) > 0);
-				break;
-			case 'archived':
-				filtered = filtered.filter(chat => chat.isArchived);
-				break;
-			default:
-				filtered = filtered.filter(chat => chat.isActive && !chat.isArchived);
-		}
-
-		return filtered.sort((a, b) => {
-			const timeA = new Date(a.lastActivity || a.updatedAt || a.createdAt || 0);
-			const timeB = new Date(b.lastActivity || b.updatedAt || b.createdAt || 0);
-			return timeB - timeA;
-		});
-	}, [contacts, searchQuery, activeFilter]);
-
 	// Get chat name based on type and participants
 	const getChatName = useCallback((chat) => {
 		if (!chat) return 'Unknown Chat';
@@ -104,26 +76,6 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 		return chat.name || `Group ${chat.memberCount || 0}`;
 	}, [currentUser]);
 
-	// Get chat avatar
-	const getChatAvatar = useCallback((chat) => {
-		if (!chat) return null;
-
-		if (chat.avatar) return chat.avatar;
-
-		if (chat.type === 'direct' && chat.participants && currentUser) {
-			const otherParticipant = chat.participants.find(p => p._id !== currentUser._id);
-			if (otherParticipant?.image) {
-				return otherParticipant.image;
-			}
-			// Generate avatar if no image
-			const name = getChatName(chat);
-			return `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=random&radius=50`;
-		}
-
-		return chat.avatar || null;
-	}, [currentUser, getChatName]);
-
-	// Get last message content
 	const getLastMessageContent = useCallback((chat) => {
 		if (!chat.lastMessage) {
 			if ((chat.messageCount || 0) === 0) return 'No messages yet';
@@ -154,6 +106,58 @@ const ChatListPanel = ({ isMobile = false, onChatSelect, showBackButton = false,
 				return chat.lastMessage.content || 'Message';
 		}
 	}, []);
+
+	// Memoized filtered and sorted contacts
+	const filteredContacts = useMemo(() => {
+		let filtered = contacts || [];
+
+		// Apply search filter
+		if (searchQuery.trim()) {
+			filtered = filtered.filter(chat => {
+				const name = getChatName(chat).toLowerCase();
+				const lastMessage = getLastMessageContent(chat).toLowerCase();
+				const query = searchQuery.toLowerCase();
+				return name.includes(query) || lastMessage.includes(query);
+			});
+		}
+
+		// Apply category filter
+		switch (activeFilter) {
+			case 'unread':
+				filtered = filtered.filter(chat => (chat.unreadCount || 0) > 0);
+				break;
+			case 'archived':
+				filtered = filtered.filter(chat => chat.isArchived);
+				break;
+			default:
+				filtered = filtered.filter(chat => chat.isActive && !chat.isArchived);
+		}
+
+		return filtered.sort((a, b) => {
+			const timeA = new Date(a.lastActivity || a.updatedAt || a.createdAt || 0);
+			const timeB = new Date(b.lastActivity || b.updatedAt || b.createdAt || 0);
+			return timeB - timeA;
+		});
+	}, [contacts, searchQuery, activeFilter]);
+
+	// Get chat avatar
+	const getChatAvatar = useCallback((chat) => {
+		if (!chat) return null;
+
+		if (chat.avatar) return chat.avatar;
+
+		if (chat.type === 'direct' && chat.participants && currentUser) {
+			const otherParticipant = chat.participants.find(p => p._id !== currentUser._id);
+			if (otherParticipant?.image) {
+				return otherParticipant.image;
+			}
+			// Generate avatar if no image
+			const name = getChatName(chat);
+			return `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=random&radius=50`;
+		}
+
+		return chat.avatar || null;
+	}, [currentUser, getChatName]);
 
 	// Get message type icon
 	const getMessageTypeIcon = useCallback((chat) => {

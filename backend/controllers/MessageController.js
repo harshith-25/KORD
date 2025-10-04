@@ -3,22 +3,20 @@ import Conversation from "../models/ConversationModel.js";
 import Message from "../models/MessagesModel.js";
 import User from "../models/UserModel.js";
 import Notification from "../models/NotificationModel.js";
-import { isUserOnline, getUserSocketIds } from "../socket.js";
+import { getIo, isUserOnline, getUserSocketIds } from "../socket.js";
 import { sendErrorResponse } from "../middleware/errorHandler.js";
-
-// This is the variable that will hold the Socket.IO instance
-let ioInstance;
-
-// This function is the one that your server.js needs to call to pass the io instance
-export const setIoInstance = (io) => {
-  ioInstance = io;
-};
 
 // @desc    Send a new message (text or file)
 // @route   POST /api/messages/send
 // @access  Private
 export const sendMessage = asyncHandler(async (req, res) => {
-  const { conversationId, content, type, isForwarded } = req.body;
+  const {
+    conversationId,
+    content,
+    type,
+    isForwarded,
+    metadata = {},
+  } = req.body;
   const senderId = req.user.id;
   const file = req.file; // From Multer middleware
 
@@ -77,13 +75,15 @@ export const sendMessage = asyncHandler(async (req, res) => {
   let messageData = {
     conversationId,
     sender: senderId,
-    readBy: [senderId],
+    readBy: [{ user: senderId, readAt: new Date() }],
     isForwarded: !!isForwarded,
+    metadata,
+    deliveryStatus: "sent",
   };
 
   if (file) {
     messageData.content = content || "";
-    messageData.file = {
+    messageData.media = {
       fileName: file.originalname,
       filePath: `/uploads/${file.filename}`,
       fileMimeType: file.mimetype,
@@ -102,30 +102,34 @@ export const sendMessage = asyncHandler(async (req, res) => {
   }
 
   const message = await Message.create(messageData);
-  const populatedMessage = await message.populate(
+  const populatedMessage = await Message.findById(message._id).populate(
     "sender",
-    "username name avatar color"
+    "firstName lastName username name avatar color image"
   );
 
   // Update conversation's last message and activity
-  conversation.lastMessage = {
-    messageId: message._id, // Changed from newMessage to message
-    content: message.content?.toString().substring(0, 200) || "", // Changed from newMessage to message
-    type: message.type, // Changed from newMessage to message
-    sender: message.sender, // Changed from newMessage to message
-    timestamp: message.createdAt, // Changed from newMessage to message
-  };
-  conversation.lastActivity = new Date();
-  await conversation.save();
+  await Conversation.findOneAndUpdate(
+    { conversationId },
+    {
+      $set: {
+        lastMessage: {
+          messageId: message._id,
+          content: message.content?.toString().substring(0, 200) || "",
+          type: message.type,
+          sender: message.sender,
+          timestamp: message.createdAt,
+        },
+        lastActivity: new Date(),
+      },
+      $inc: { messageCount: 1 },
+    }
+  );
 
   // Emit message via Socket.IO
-  if (ioInstance) {
-    const roomName =
-      conversation.type === "direct"
-        ? conversation.conversationId
-        : conversation.slug;
-
-    ioInstance.to(roomName).emit("newMessage", populatedMessage);
+  try {
+    const io = getIo();
+    io.to(conversationId).emit("message_received", populatedMessage);
+    console.log(`✅ Message broadcasted to conversation ${conversationId}`);
 
     const recipients = conversation.participants.filter(
       (p) => p.user.toString() !== senderId.toString() && p.isActive
@@ -176,7 +180,10 @@ export const sendMessage = asyncHandler(async (req, res) => {
         });
       }
     }
+  } catch (error) {
+    console.error("Error emitting message via Socket.IO:", error);
   }
+
   res.status(201).json(populatedMessage);
 });
 
@@ -207,10 +214,10 @@ export const getMessages = asyncHandler(async (req, res) => {
   const options = {
     page: parseInt(page, 10),
     limit: parseInt(limit, 10),
-    sort: { createdAt: 1 },
+    sort: { createdAt: -1 },
     populate: {
       path: "sender",
-      select: "name avatar isOnline",
+      select: "firstName lastName username name avatar image isOnline",
     },
   };
 
@@ -223,37 +230,90 @@ export const getMessages = asyncHandler(async (req, res) => {
     options
   );
 
-  // Fix: Check if readBy exists and is an array before using includes
-  const messagesToMarkRead = messages.docs.filter(
-    (msg) =>
-      !msg.readBy ||
-      !Array.isArray(msg.readBy) ||
-      !msg.readBy.includes(currentUserId)
-  );
+  // CHANGED: Reverse the docs array so oldest messages appear first in the UI
+  // This allows proper chronological display while fetching newest first for pagination
+  const reversedDocs = [...messages.docs].reverse();
+
+  // Mark messages as read - only for messages from other users
+  const messagesToMarkRead = reversedDocs.filter((msg) => {
+    // Skip messages sent by the current user
+    if (msg.sender.toString() === currentUserId.toString()) {
+      return false;
+    }
+
+    if (!msg.readBy || !Array.isArray(msg.readBy)) {
+      return true;
+    }
+
+    const hasRead = msg.readBy.some((receipt) => {
+      if (typeof receipt === "object" && receipt.user) {
+        return receipt.user.toString() === currentUserId.toString();
+      }
+      return receipt.toString() === currentUserId.toString();
+    });
+
+    return !hasRead;
+  });
 
   if (messagesToMarkRead.length > 0) {
     const messageIdsToUpdate = messagesToMarkRead.map((m) => m._id);
+    const readAt = new Date();
+
     await Message.updateMany(
       { _id: { $in: messageIdsToUpdate } },
-      { $addToSet: { readBy: currentUserId } }
+      {
+        $addToSet: {
+          readBy: {
+            user: currentUserId,
+            readAt: readAt,
+          },
+        },
+      }
     );
 
-    if (ioInstance) {
-      messagesToMarkRead.forEach((msg) => {
-        const senderSocketIds = getUserSocketIds(msg.sender.toString());
-        senderSocketIds.forEach((socketId) => {
-          ioInstance.to(socketId).emit("message-read", {
-            messageId: msg._id,
-            readerId: currentUserId,
-            conversationId: msg.conversationId,
-            chatType: conversation.type,
-          });
-        });
+    // Emit read receipts via Socket.IO
+    try {
+      const io = getIo();
+
+      // Emit bulk read event to all participants
+      io.to(conversationId).emit("messages_read", {
+        conversationId,
+        userId: currentUserId,
+        count: messagesToMarkRead.length,
+        readAt: readAt,
       });
+
+      // Emit individual message_read events for each sender
+      const senderIds = new Set();
+      messagesToMarkRead.forEach((msg) => {
+        const senderId = msg.sender.toString();
+        if (!senderIds.has(senderId)) {
+          senderIds.add(senderId);
+          const senderSocketIds = getUserSocketIds(senderId);
+          senderSocketIds.forEach((socketId) => {
+            io.to(socketId).emit("message_read", {
+              messageId: msg._id,
+              readerId: currentUserId,
+              conversationId: msg.conversationId,
+              readAt: readAt,
+            });
+          });
+        }
+      });
+
+      console.log(
+        `✅ ${messagesToMarkRead.length} messages marked as read by user ${currentUserId} in conversation ${conversationId}`
+      );
+    } catch (error) {
+      console.error("Error emitting read receipts:", error);
     }
   }
 
-  res.status(200).json(messages);
+  // CHANGED: Return reversed docs with pagination metadata
+  res.status(200).json({
+    ...messages,
+    docs: reversedDocs,
+  });
 });
 
 // @desc    Edit a message
@@ -264,11 +324,18 @@ export const editMessage = asyncHandler(async (req, res) => {
   const { newContent } = req.body;
   const currentUserId = req.user.id;
 
+  // FIXED: Don't populate sender here, just fetch the raw message
   const message = await Message.findById(messageId);
   if (!message) {
     return sendErrorResponse(res, null, "Message not found.", 404);
   }
-  if (message.sender.toString() !== currentUserId) {
+
+  // FIXED: Check sender directly without populate (sender is already an ObjectId)
+  if (!message.sender) {
+    return sendErrorResponse(res, null, "Sender information is missing.", 400);
+  }
+
+  if (message.sender.toString() !== currentUserId.toString()) {
     return sendErrorResponse(
       res,
       null,
@@ -276,10 +343,13 @@ export const editMessage = asyncHandler(async (req, res) => {
       403
     );
   }
+
   if (message.isDeleted) {
     return sendErrorResponse(res, null, "Cannot edit a deleted message.", 400);
   }
-  if (!message.canUserEdit()) {
+
+  // FIXED: Now canUserEdit will work because sender is an ObjectId
+  if (message.canUserEdit && !message.canUserEdit(currentUserId)) {
     return sendErrorResponse(res, null, "Editing time limit has expired.", 403);
   }
 
@@ -288,20 +358,23 @@ export const editMessage = asyncHandler(async (req, res) => {
   message.editedAt = new Date();
   await message.save();
 
-  const populatedMessage = await Message.populate(message, {
-    path: "sender",
-    select: "name avatar isOnline",
-  });
+  // Populate after saving
+  const populatedMessage = await Message.findById(message._id).populate(
+    "sender",
+    "firstName lastName username name avatar image isOnline"
+  );
 
-  if (ioInstance) {
-    const conversation = await Conversation.findOne({
+  try {
+    const io = getIo();
+    io.to(message.conversationId).emit("message_edited", {
       conversationId: message.conversationId,
+      messageId: message._id,
+      newContent: message.content,
+      editedAt: message.editedAt,
     });
-    const roomName =
-      conversation.type === "direct"
-        ? conversation.conversationId
-        : conversation.slug;
-    ioInstance.to(roomName).emit("messageEdited", populatedMessage);
+    console.log(`✅ Edit emitted for message ${messageId}`);
+  } catch (error) {
+    console.error("Error emitting message edit:", error);
   }
 
   res.status(200).json(populatedMessage);
@@ -351,6 +424,7 @@ export const deleteMessage = asyncHandler(async (req, res) => {
 
     message.isDeleted = true;
     message.content = "This message was deleted.";
+    message.media = undefined;
     message.file = undefined;
     message.reactions = [];
     message.readBy = [];
@@ -367,16 +441,16 @@ export const deleteMessage = asyncHandler(async (req, res) => {
   }
   await message.save();
 
-  if (ioInstance) {
-    const roomName =
-      conversation.type === "direct"
-        ? conversation.conversationId
-        : conversation.slug;
-    ioInstance.to(roomName).emit("messageDeleted", {
+  try {
+    const io = getIo();
+    io.to(message.conversationId).emit("message_deleted", {
+      conversationId: message.conversationId,
       messageId,
       deleteFor,
-      deletedBy: currentUserId,
     });
+    console.log(`✅ Delete emitted for message ${messageId}`);
+  } catch (error) {
+    console.error("Error emitting message delete:", error);
   }
 
   res
@@ -409,22 +483,21 @@ export const addReaction = asyncHandler(async (req, res) => {
     );
   }
 
-  message.reactions.push({ emoji, user: currentUserId });
+  const newReaction = { emoji, user: currentUserId };
+  message.reactions.push(newReaction);
   await message.save();
 
-  if (ioInstance) {
-    const conversation = await Conversation.findOne({
+  try {
+    const io = getIo();
+    io.to(message.conversationId).emit("message_reaction", {
       conversationId: message.conversationId,
-    });
-    const roomName =
-      conversation.type === "direct"
-        ? conversation.conversationId
-        : conversation.slug;
-    ioInstance.to(roomName).emit("messageReactionAdded", {
       messageId,
-      emoji,
-      userId: currentUserId,
+      reaction: newReaction,
+      reactions: message.reactions,
     });
+    console.log(`✅ Reaction emitted for message ${messageId}`);
+  } catch (error) {
+    console.error("Error emitting reaction:", error);
   }
 
   res.status(200).json({
@@ -447,6 +520,10 @@ export const removeReaction = asyncHandler(async (req, res) => {
   }
 
   const initialLength = message.reactions.length;
+  const removedReaction = message.reactions.find(
+    (r) => r.user.toString() === currentUserId && r.emoji === emoji
+  );
+
   message.reactions = message.reactions.filter(
     (r) => !(r.user.toString() === currentUserId && r.emoji === emoji)
   );
@@ -461,19 +538,17 @@ export const removeReaction = asyncHandler(async (req, res) => {
   }
   await message.save();
 
-  if (ioInstance) {
-    const conversation = await Conversation.findOne({
+  try {
+    const io = getIo();
+    io.to(message.conversationId).emit("message_reaction", {
       conversationId: message.conversationId,
-    });
-    const roomName =
-      conversation.type === "direct"
-        ? conversation.conversationId
-        : conversation.slug;
-    ioInstance.to(roomName).emit("messageReactionRemoved", {
       messageId,
-      emoji,
-      userId: currentUserId,
+      reaction: { ...removedReaction, removed: true },
+      reactions: message.reactions,
     });
+    console.log(`✅ Reaction removal emitted for message ${messageId}`);
+  } catch (error) {
+    console.error("Error emitting reaction removal:", error);
   }
 
   res.status(200).json({
@@ -524,6 +599,8 @@ export const forwardMessage = asyncHandler(async (req, res) => {
   }
 
   const forwardedMessages = [];
+  const io = getIo();
+
   for (const conversationId of targetConversationIds) {
     const targetConversation = await Conversation.findOne({ conversationId });
     if (!targetConversation) {
@@ -548,25 +625,48 @@ export const forwardMessage = asyncHandler(async (req, res) => {
       sender: currentUserId,
       content: originalMessage.content,
       type: originalMessage.type,
-      file: originalMessage.file,
+      media: originalMessage.media || originalMessage.file,
+      metadata: originalMessage.metadata || {},
       isForwarded: true,
-      readBy: [currentUserId],
+      readBy: [{ user: currentUserId, readAt: new Date() }],
+      deliveryStatus: "sent",
     };
     const newMessage = await Message.create(newMessageData);
-    await targetConversation.updateLastMessage(newMessage);
 
-    const populatedNewMessage = await Message.populate(newMessage, {
-      path: "sender",
-      select: "name avatar isOnline",
-    });
+    // Update conversation last message
+    await Conversation.findOneAndUpdate(
+      { conversationId },
+      {
+        $set: {
+          lastMessage: {
+            messageId: newMessage._id,
+            content: newMessage.content?.substring(0, 200) || "",
+            type: newMessage.type,
+            sender: newMessage.sender,
+            timestamp: newMessage.createdAt,
+          },
+          lastActivity: new Date(),
+        },
+        $inc: { messageCount: 1 },
+      }
+    );
+
+    const populatedNewMessage = await Message.findById(newMessage._id).populate(
+      "sender",
+      "firstName lastName username name avatar image isOnline"
+    );
     forwardedMessages.push(populatedNewMessage);
 
-    if (ioInstance) {
-      const roomName =
-        targetConversation.type === "direct"
-          ? targetConversation.conversationId
-          : targetConversation.slug;
-      ioInstance.to(roomName).emit("newMessage", populatedNewMessage);
+    try {
+      io.to(conversationId).emit("message_received", populatedNewMessage);
+      console.log(
+        `✅ Forwarded message broadcasted to conversation ${conversationId}`
+      );
+    } catch (error) {
+      console.error(
+        `Error emitting forwarded message to ${conversationId}:`,
+        error
+      );
     }
   }
 
@@ -623,7 +723,7 @@ export const searchMessages = asyncHandler(async (req, res) => {
     sort: { createdAt: -1 },
     populate: {
       path: "sender",
-      select: "name avatar isOnline",
+      select: "firstName lastName username name avatar image isOnline",
     },
   };
   const messages = await Message.paginate(searchFilter, options);

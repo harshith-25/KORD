@@ -4,6 +4,8 @@ import GlobalSidebar from '@/components/GlobalSidebar';
 import ChatListPanel from '@/pages/Chat/ChatListPanel';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
+import { useConversationStore } from '@/store/conversationStore';
+import { useMessageStore } from '@/store/messageStore';
 import { ArrowLeft, Menu, X } from 'lucide-react';
 
 // Breakpoints
@@ -24,13 +26,13 @@ const AppLayout = ({ children }) => {
 	const location = useLocation();
 	const { user, isAuthenticated, initializeAuth } = useAuthStore();
 	const {
-		fetchContacts,
-		fetchMessages,
 		selectedChatId,
 		initializeSocket,
 		clearChatState,
-		contacts
 	} = useChatStore();
+
+	const { fetchContacts } = useConversationStore();
+	const { fetchMessages } = useMessageStore();
 
 	// Responsive state
 	const [screenSize, setScreenSize] = useState('desktop');
@@ -328,7 +330,7 @@ const AppLayout = ({ children }) => {
 				>
 					{/* Miniscus/handle in the center */}
 					<div
-						className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-6 bg-blue-400 z-1 dark:bg-white-800 rounded-full opacity-70"
+						className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.75 h-6 bg-green-500 z-1 dark:bg-green-100 rounded-full opacity-70"
 						style={{
 							boxShadow: '0 0 2px 0.5px rgba(0,0,0,0.08)',
 						}}

@@ -136,7 +136,7 @@ const ChatPage = ({ onSettingsOpen }) => {
 				</div>
 
 				{/* Chat List */}
-				<div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+				<div className="flex-1 overflow-y-auto p-2">
 					{loadingContacts ? (
 						<div className="flex justify-center items-center h-full">
 							<Loader2 className="w-6 h-6 animate-spin text-gray-500" />

@@ -397,6 +397,11 @@ messageSchema.methods.isDeletedFor = function (userId) {
 };
 
 messageSchema.methods.canUserEdit = function (userId) {
+  if (!this.sender) {
+    console.error("Sender is undefined in canUserEdit");
+    return false;
+  }
+
   return (
     this.sender.toString() === userId.toString() &&
     Date.now() - this.createdAt.getTime() < 15 * 60 * 1000

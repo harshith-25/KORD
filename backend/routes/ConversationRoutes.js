@@ -8,7 +8,7 @@ import {
   updateConversationInfo,
   joinConversation,
   addMember,
-  removeMember, // Don't forget to import the new function
+  removeMember,
   leaveConversation,
   getPublicConversations,
 } from "../controllers/ConversationController.js";

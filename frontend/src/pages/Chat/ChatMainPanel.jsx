@@ -1,7 +1,9 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useChatStore } from '@/store/chatStore';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useSocketStore } from '@/store/socketStore';
+import { useChatStore } from '@/store/chatStore';
+import { useConversationStore } from '@/store/conversationStore';
+import { useMessageStore } from '@/store/messageStore';
 import { SignInPlaceholder, NoChatSelectedPlaceholder } from '@/skeletons/ChatPanel';
 import ChatHeader from './ChatMessagePanel/ChatHeader';
 import ChatMessagesPanel from './ChatMessagePanel/ChatMessagesPanel';
@@ -10,25 +12,42 @@ import ChatMessageInput from './ChatMessagePanel/ChatMessageInput';
 function ChatMainPanel() {
 	const {
 		selectedChatId,
-		contacts,
-		messages,
-		fetchMessages,
-		sendMessage,
-		loadingMessages,
-		isTyping,
+		loadingMessages: isChatStoreLoading,
+		startTyping,
+		stopTyping,
 		onlineUsers,
-		addMessage,
+		error: globalError,
 		updateMessageStatus
 	} = useChatStore();
+
+	const { contacts } = useConversationStore();
+
+	const {
+		messages,
+		sendMessage,
+		loadingMessages,
+	} = useMessageStore();
 
 	const { user: currentUser } = useAuthStore();
 	const { socket } = useSocketStore();
 
-	const selectedChat = contacts.find(contact =>
-		contact.conversationId === selectedChatId ||
-		contact.id === selectedChatId ||
-		contact._id === selectedChatId
-	);
+	const contactsArray = contacts || [];
+
+	const selectedChat = selectedChatId
+		? contactsArray.find(contact =>
+			contact.conversationId === selectedChatId ||
+			contact.id === selectedChatId ||
+			contact._id === selectedChatId
+		)
+		: null;
+
+	const getTypingIndicatorText = useChatStore((state) => state.getTypingIndicatorText);
+
+	const typingText = selectedChat?.conversationId
+		? getTypingIndicatorText(selectedChat.conversationId)
+		: '';
+
+	const isTyping = typingText.length > 0;
 
 	const currentMessages = messages[selectedChatId] || [];
 	const messagesEndRef = useRef(null);
@@ -85,15 +104,11 @@ function ChatMainPanel() {
 				return null;
 			}
 
+			const name = getChatName(selectedChat);
+
 			return otherParticipant.image ||
 				otherParticipant.avatar ||
-				`https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(
-					otherParticipant.firstName ||
-					otherParticipant.lastName ||
-					otherParticipant.username ||
-					otherParticipant.email ||
-					'User'
-				)}&backgroundColor=random&radius=50`;
+				`https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=random&radius=50`;
 		}
 
 		return selectedChat.avatar || null;
@@ -129,74 +144,34 @@ function ChatMainPanel() {
 		return () => window.removeEventListener('resize', handleResize);
 	}, []);
 
-	useEffect(() => {
-		if (selectedChatId) {
-			fetchMessages(selectedChatId);
-		}
-	}, [selectedChatId, fetchMessages]);
-
 	const scrollToBottom = useCallback((behavior = 'smooth') => {
 		if (messagesEndRef.current) {
 			messagesEndRef.current.scrollIntoView({ behavior });
 		}
 	}, []);
 
-	// Socket message handling
+	// Typing indicators handled by messageStore socket listeners
 	useEffect(() => {
-		if (!socket || !currentUser?._id) return;
+		const socketStore = useSocketStore.getState();
+		const chatStore = useChatStore.getState();
 
-		const handleReceiveMessage = (incomingMessage) => {
-			console.log("📨 Received message via socket:", incomingMessage);
+		socketStore.onTyping(({ userId, conversationId }) => {
+			chatStore.handleTypingStart(userId, conversationId);
+		});
 
-			// Don't add messages that we sent ourselves to avoid duplicates
-			if (incomingMessage.senderId === currentUser._id) {
-				console.log("Ignoring own message to prevent duplicates");
-				return;
-			}
-
-			if (addMessage && typeof addMessage === 'function') {
-				addMessage(incomingMessage.conversationId || incomingMessage.chatId, {
-					...incomingMessage,
-					type: 'received',
-					status: 'delivered'
-				});
-			}
-		};
-
-		const handleMessageStatusUpdate = (data) => {
-			console.log("📋 Message status updated:", data);
-
-			if (updateMessageStatus && typeof updateMessageStatus === 'function') {
-				updateMessageStatus(data.conversationId, data.messageId, data.status);
-			}
-		};
-
-		const handleTypingStart = (data) => {
-			console.log("⌨️ User started typing:", data);
-			if (data.conversationId === selectedChatId && data.userId !== currentUser._id) {
-				useChatStore.getState().setTypingUser(data.conversationId, data.userId, true);
-			}
-		};
-
-		const handleTypingStop = (data) => {
-			console.log("⏹️ User stopped typing:", data);
-			if (data.conversationId === selectedChatId && data.userId !== currentUser._id) {
-				useChatStore.getState().setTypingUser(data.conversationId, data.userId, false);
-			}
-		};
-
-		socket.on('receiveMessage', handleReceiveMessage);
-		socket.on('messageStatusUpdate', handleMessageStatusUpdate);
-		socket.on('typingStart', handleTypingStart);
-		socket.on('typingStop', handleTypingStop);
+		socketStore.onStopTyping(({ userId, conversationId }) => {
+			chatStore.handleTypingStop(userId, conversationId);
+		});
 
 		return () => {
-			socket.off('receiveMessage', handleReceiveMessage);
-			socket.off('messageStatusUpdate', handleMessageStatusUpdate);
-			socket.off('typingStart', handleTypingStart);
-			socket.off('typingStop', handleTypingStop);
+			socketStore.offTyping();
+			socketStore.offStopTyping();
 		};
-	}, [socket, currentUser?._id, selectedChatId, addMessage, updateMessageStatus]);
+	}, []);
+
+	// ⚠️ REMOVED: Duplicate socket message handling
+	// All socket message handling is now centralized in messageStore.js
+	// This prevents double-processing of messages
 
 	const handleScroll = useCallback(() => {
 		if (!messagesContainerRef.current) return;
@@ -221,7 +196,7 @@ function ChatMainPanel() {
 	}, [selectedChatId]);
 
 	const handleSendMessage = useCallback((e) => {
-		e.preventDefault();
+		e?.preventDefault();
 		if (messageInput.trim() && selectedChatId) {
 			sendMessage(selectedChatId, messageInput.trim());
 			setMessageInput('');
@@ -281,7 +256,7 @@ function ChatMainPanel() {
 				scrollToBottom={scrollToBottom}
 				showScrollButton={showScrollButton}
 				isTyping={isTyping}
-				chatName={chatName}
+				typingText={typingText}
 				isMobile={isMobile}
 			/>
 
@@ -292,6 +267,7 @@ function ChatMainPanel() {
 				inputRef={inputRef}
 				showEmojiPicker={showEmojiPicker}
 				setShowEmojiPicker={setShowEmojiPicker}
+				conversationId={selectedChat?.conversationId}
 			/>
 		</div>
 	);

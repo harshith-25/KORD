@@ -1,80 +1,299 @@
-* {
-	scrollbar-width: thin;
-	scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
+/* ============================================
+   CLEAN SCROLLBAR - NO ARROWS - TEAMS STYLE
+   Requirement: No track, only thumb, no arrows, hover expansion
+   ============================================ */
+
+/* Reset all existing scrollbar styles */
+*::-webkit-scrollbar,
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-corner,
+*::-webkit-scrollbar-button {
+	all: unset;
 }
 
-/* frontend/src/styles/globals.css (Add these or similar styles) */
+/* Universal scrollbar - Firefox */
+* {
+	scrollbar-width: thin !important;
+	scrollbar-color: rgba(0, 0, 0, 0.3) transparent !important;
+}
 
-/* For Webkit browsers (Chrome, Safari) */
+.dark * {
+	scrollbar-color: rgba(255, 255, 255, 0.4) transparent !important;
+}
+
+/* Webkit scrollbar base */
+*::-webkit-scrollbar {
+	width: 4px !important;
+	height: 4px !important;
+	background: transparent !important;
+}
+
+/* CRITICAL: Remove all arrow buttons */
+*::-webkit-scrollbar-button:single-button {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
+*::-webkit-scrollbar-button:double-button {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
+*::-webkit-scrollbar-button:start:decrement {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
+*::-webkit-scrollbar-button:end:increment {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
+*::-webkit-scrollbar-button:vertical:start:decrement {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
+*::-webkit-scrollbar-button:vertical:end:increment {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
+*::-webkit-scrollbar-button:horizontal:start:decrement {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
+*::-webkit-scrollbar-button:horizontal:end:increment {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
+/* Track - completely transparent */
+*::-webkit-scrollbar-track {
+	background: transparent !important;
+	border: none !important;
+	border-radius: 0 !important;
+}
+
+*::-webkit-scrollbar-track-piece {
+	background: transparent !important;
+	border: none !important;
+}
+
+/* Thumb - default state */
+*::-webkit-scrollbar-thumb {
+	background: rgba(0, 0, 0, 0.25) !important;
+	border-radius: 2px !important;
+	border: none !important;
+	min-height: 20px !important;
+	transition: all 0.15s ease !important;
+}
+
+/* Hover state - expand scrollbar and thumb */
+*:hover::-webkit-scrollbar {
+	width: 8px !important;
+	height: 8px !important;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+	background: rgba(0, 0, 0, 0.4) !important;
+	border-radius: 4px !important;
+}
+
+/* Active/dragging state */
+*::-webkit-scrollbar-thumb:active {
+	background: rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Corner */
+*::-webkit-scrollbar-corner {
+	background: transparent !important;
+}
+
+/* Dark mode styles */
+.dark *::-webkit-scrollbar-thumb {
+	background: rgba(255, 255, 255, 0.25) !important;
+}
+
+.dark *:hover::-webkit-scrollbar-thumb {
+	background: rgba(255, 255, 255, 0.4) !important;
+}
+
+.dark *::-webkit-scrollbar-thumb:active {
+	background: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Force apply to common containers */
+html,
+body,
+div,
+section,
+article,
+main,
+nav,
+ul,
+ol,
+li,
+textarea,
+pre {
+	scrollbar-width: thin !important;
+	scrollbar-color: rgba(0, 0, 0, 0.3) transparent !important;
+}
+
+.dark html,
+.dark body,
+.dark div,
+.dark section,
+.dark article,
+.dark main,
+.dark nav,
+.dark ul,
+.dark ol,
+.dark li,
+.dark textarea,
+.dark pre {
+	scrollbar-color: rgba(255, 255, 255, 0.4) transparent !important;
+}
+
+/* Tailwind overflow classes */
+.overflow-auto,
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-scroll,
+.overflow-y-scroll,
+.overflow-x-scroll {
+	scrollbar-width: thin !important;
+	scrollbar-color: rgba(0, 0, 0, 0.3) transparent !important;
+}
+
+.overflow-auto::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar,
+.overflow-scroll::-webkit-scrollbar,
+.overflow-y-scroll::-webkit-scrollbar,
+.overflow-x-scroll::-webkit-scrollbar {
+	width: 4px !important;
+	height: 4px !important;
+	background: transparent !important;
+}
+
+/* Remove arrows for overflow classes */
+.overflow-auto::-webkit-scrollbar-button,
+.overflow-y-auto::-webkit-scrollbar-button,
+.overflow-x-auto::-webkit-scrollbar-button,
+.overflow-scroll::-webkit-scrollbar-button,
+.overflow-y-scroll::-webkit-scrollbar-button,
+.overflow-x-scroll::-webkit-scrollbar-button {
+	display: none !important;
+	width: 0px !important;
+	height: 0px !important;
+	background: transparent !important;
+}
+
+.overflow-auto::-webkit-scrollbar-track,
+.overflow-y-auto::-webkit-scrollbar-track,
+.overflow-x-auto::-webkit-scrollbar-track,
+.overflow-scroll::-webkit-scrollbar-track,
+.overflow-y-scroll::-webkit-scrollbar-track,
+.overflow-x-scroll::-webkit-scrollbar-track {
+	background: transparent !important;
+	border: none !important;
+}
+
+.overflow-auto::-webkit-scrollbar-thumb,
+.overflow-y-auto::-webkit-scrollbar-thumb,
+.overflow-x-auto::-webkit-scrollbar-thumb,
+.overflow-scroll::-webkit-scrollbar-thumb,
+.overflow-y-scroll::-webkit-scrollbar-thumb,
+.overflow-x-scroll::-webkit-scrollbar-thumb {
+	background: rgba(0, 0, 0, 0.25) !important;
+	border-radius: 2px !important;
+	transition: all 0.15s ease !important;
+}
+
+.overflow-auto:hover::-webkit-scrollbar,
+.overflow-y-auto:hover::-webkit-scrollbar,
+.overflow-x-auto:hover::-webkit-scrollbar,
+.overflow-scroll:hover::-webkit-scrollbar,
+.overflow-y-scroll:hover::-webkit-scrollbar,
+.overflow-x-scroll:hover::-webkit-scrollbar {
+	width: 8px !important;
+	height: 8px !important;
+}
+
+.overflow-auto:hover::-webkit-scrollbar-thumb,
+.overflow-y-auto:hover::-webkit-scrollbar-thumb,
+.overflow-x-auto:hover::-webkit-scrollbar-thumb,
+.overflow-scroll:hover::-webkit-scrollbar-thumb,
+.overflow-y-scroll:hover::-webkit-scrollbar-thumb,
+.overflow-x-scroll:hover::-webkit-scrollbar-thumb {
+	background: rgba(0, 0, 0, 0.4) !important;
+	border-radius: 4px !important;
+}
+
+/* Dark mode for overflow classes */
+.dark .overflow-auto::-webkit-scrollbar-thumb,
+.dark .overflow-y-auto::-webkit-scrollbar-thumb,
+.dark .overflow-x-auto::-webkit-scrollbar-thumb,
+.dark .overflow-scroll::-webkit-scrollbar-thumb,
+.dark .overflow-y-scroll::-webkit-scrollbar-thumb,
+.dark .overflow-x-scroll::-webkit-scrollbar-thumb {
+	background: rgba(255, 255, 255, 0.25) !important;
+}
+
+.dark .overflow-auto:hover::-webkit-scrollbar-thumb,
+.dark .overflow-y-auto:hover::-webkit-scrollbar-thumb,
+.dark .overflow-x-auto:hover::-webkit-scrollbar-thumb,
+.dark .overflow-scroll:hover::-webkit-scrollbar-thumb,
+.dark .overflow-y-scroll:hover::-webkit-scrollbar-thumb,
+.dark .overflow-x-scroll:hover::-webkit-scrollbar-thumb {
+	background: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Override any existing custom styles */
+.custom-scrollbar {
+	scrollbar-width: thin !important;
+	scrollbar-color: rgba(0, 0, 0, 0.3) transparent !important;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
-	width: 8px;
-	/* width of the scrollbar */
-	height: 8px;
-	/* height of the scrollbar for horizontal scrollbars */
+	width: 4px !important;
+	height: 4px !important;
+	background: transparent !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar-button {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-	background: #f1f1f1;
-	/* color of the tracking area */
-	border-radius: 10px;
+	background: transparent !important;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-	background: #888;
-	/* color of the scroll thumb */
-	border-radius: 10px;
+	background: rgba(0, 0, 0, 0.25) !important;
+	border-radius: 2px !important;
+	transition: all 0.15s ease !important;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-	background: #555;
-	/* color of the scroll thumb on hover */
+.custom-scrollbar:hover::-webkit-scrollbar {
+	width: 8px !important;
+	height: 8px !important;
 }
 
-/* For Firefox */
-.custom-scrollbar {
-	scrollbar-width: thin;
-	/* "auto" or "thin" */
-	scrollbar-color: #888 #f1f1f1;
-	/* thumb and track color */
-}
-
-/* For dark mode */
-.dark .custom-scrollbar::-webkit-scrollbar-track {
-	background: #333;
-}
-
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-	background: #555;
-}
-
-.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-	background: #777;
-}
-
-.dark .custom-scrollbar {
-	scrollbar-color: #555 #333;
-}
-
-.settings-drawer {
-	position: fixed;
-	top: 0;
-	right: -320px;
-	/* hidden by default */
-	width: 320px;
-	height: 100vh;
-	background: var(--tw-bg-opacity, 1) white;
-	color: #111;
-	z-index: 50;
-	display: flex;
-	flex-direction: column;
-	transition: right .25s ease;
-}
-
-.dark .settings-drawer {
-	background: #111;
-	color: #f3f4f6;
-}
-
-.settings-drawer.open {
-	right: 0;
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+	background: rgba(0, 0, 0, 0.4) !important;
+	border-radius: 4px !important;
 }

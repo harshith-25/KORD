@@ -32,7 +32,6 @@ import friendRoutes from "./routes/friendRoutes.js";
 
 // Import specific controllers to pass io instance
 import { setFriendControllerIo } from "./controllers/friendController.js";
-import { setIoInstance as setMessageControllerIo } from "./controllers/MessageController.js"; // You need to ensure this is implemented in your messageController.js
 
 dotenv.config();
 
@@ -51,9 +50,6 @@ const io = initSocket(server);
 
 // Pass the io instance to controllers that need it for emitting events
 setFriendControllerIo(io);
-setMessageControllerIo(io);
-
-// --- Security & Core Middleware (ORDER MATTERS) ---
 
 // 1. Helmet: Secure HTTP headers
 app.use(helmet());
