@@ -43,14 +43,15 @@ const getOrCreateDirectConversation = async (req, res) => {
       });
 
       // If a new conversation was created, we need to populate it before sending the response
-      conversation = await conversation
+      conversation = await Conversation.findById(conversation._id)
         .populate("directParticipants")
         .populate("participants.user");
     }
 
     res.status(200).json(conversation);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error in getOrCreateDirectConversation:", error);
+    res.status(500).json({ message: error.message || "Internal server error" });
   }
 };
 

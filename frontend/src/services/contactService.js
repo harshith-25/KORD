@@ -3,6 +3,7 @@ import {
   SEARCH_CONTACTS_ROUTE,
   GET_DM_CONTACTS_ROUTE,
   GET_ALL_CONTACTS_ROUTE,
+  CREATE_DIRECT_CONVERSATION,
 } from "@/utils/ApiRoutes";
 
 const contactService = {
@@ -21,6 +22,13 @@ const contactService = {
 
   getAllContacts: async () => {
     const response = await api.get(GET_ALL_CONTACTS_ROUTE);
+    return response.data;
+  },
+
+  createDirectConversation: async (userId) => {
+    const response = await api.post(CREATE_DIRECT_CONVERSATION, {
+      userId,
+    });
     return response.data;
   },
 };

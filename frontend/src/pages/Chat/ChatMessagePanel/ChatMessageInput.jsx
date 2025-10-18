@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Paperclip, Send, Smile, FileText, Image, Camera, BarChart3, X, File } from 'lucide-react';
+import { Paperclip, Send, Smile, FileText, Image, Camera, BarChart3, X } from 'lucide-react';
 import EmojiPicker from 'emoji-picker-react';
 import { useSocketStore } from '@/store/socketStore';
+import { useMessageStore } from '@/store/messageStore';
+import { toast } from 'sonner';
 
 function ChatMessageInput({
 	messageInput,
 	setMessageInput,
 	handleSendMessage,
 	inputRef,
-	conversationId
+	conversationId,
+	editingMessage,
+	setEditingMessage,
+	replyingTo,
+	setReplyingTo
 }) {
 	// Refs for different functionalities
 	const emojiRef = useRef();
@@ -16,7 +22,6 @@ function ChatMessageInput({
 	const documentInputRef = useRef();
 	const imageInputRef = useRef();
 	const cameraInputRef = useRef();
-	const dragRef = useRef(null);
 
 	// State management
 	const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
@@ -32,34 +37,46 @@ function ChatMessageInput({
 
 	const emitTyping = useSocketStore((state) => state.emitTyping);
 	const emitStopTyping = useSocketStore((state) => state.emitStopTyping);
+	const { editMessage } = useMessageStore();
 	const typingTimeoutRef = useRef(null);
+	const sendingRef = useRef(false);
 
-	// Add this function after your state declarations
+	// Load editing message content when edit mode is activated
+	useEffect(() => {
+		if (editingMessage) {
+			const content = editingMessage.content || editingMessage.text || '';
+			setMessageInput(content);
+			// Focus input
+			if (inputRef.current) {
+				inputRef.current.focus();
+				// Move cursor to end
+				const length = content.length;
+				inputRef.current.setSelectionRange(length, length);
+			}
+		}
+	}, [editingMessage, setMessageInput, inputRef]);
+
+	// Handle typing indicator
 	const handleTypingIndicator = useCallback(() => {
-		if (!conversationId) return;
+		if (!conversationId || editingMessage) return; // Don't emit typing when editing
 
-		// Emit typing start
 		emitTyping(conversationId);
 
-		// Clear existing timeout
 		if (typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
 		}
 
-		// Set timeout to emit stop typing after 3 seconds of inactivity
 		typingTimeoutRef.current = setTimeout(() => {
 			emitStopTyping(conversationId);
 		}, 3000);
-	}, [conversationId, emitTyping, emitStopTyping]);
+	}, [conversationId, emitTyping, emitStopTyping, editingMessage]);
 
 	// Close dropdowns when clicking outside
 	useEffect(() => {
 		function handleClickOutside(event) {
-			// If clicked outside the emoji container, close the emoji picker
 			if (emojiRef.current && !emojiRef.current.contains(event.target)) {
 				setShowEmojiPicker(false);
 			}
-			// If clicked outside the attachment container, close the attachment menu
 			if (attachmentRef.current && !attachmentRef.current.contains(event.target)) {
 				setAttachmentMenuOpen(false);
 			}
@@ -92,58 +109,6 @@ function ChatMessageInput({
 		const sizes = ['Bytes', 'KB', 'MB', 'GB'];
 		const i = Math.floor(Math.log(bytes) / Math.log(k));
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-	};
-
-	// File preview component
-	const getFilePreviewComponent = (fileObj) => {
-		switch (fileObj.type) {
-			case 'image':
-				return fileObj.preview ? (
-					<img src={fileObj.preview} alt={fileObj.name} className="w-full h-full object-cover" />
-				) : null;
-			case 'video':
-				return (
-					<div className="w-full h-full bg-black flex items-center justify-center relative">
-						{fileObj.preview ? (
-							<video className="w-full h-full object-cover" muted>
-								<source src={fileObj.preview} />
-							</video>
-						) : null}
-						<div className="absolute inset-0 flex items-center justify-center">
-							<div className="w-8 h-8 bg-white bg-opacity-80 rounded-full flex items-center justify-center">
-								<Send className="rotate-180 text-black text-lg" />
-							</div>
-						</div>
-						<div className="absolute bottom-1 left-1 bg-black bg-opacity-60 text-white text-xs px-1 rounded">
-							VIDEO
-						</div>
-					</div>
-				);
-			case 'pdf':
-				return (
-					<div className="w-full h-full bg-gray-100 dark:bg-gray-700 flex flex-col items-center justify-center p-2 text-gray-900 dark:text-gray-100">
-						<FileText className="text-red-600 text-4xl mb-1" />
-						<div className="text-xs font-semibold text-center truncate w-full px-1">
-							{fileObj.name}
-						</div>
-						<div className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
-							{formatFileSize(fileObj.size)}
-						</div>
-					</div>
-				);
-			default:
-				return (
-					<div className="w-full h-full bg-gray-100 dark:bg-gray-700 flex flex-col items-center justify-center p-2 text-gray-900 dark:text-gray-100">
-						<File className="text-gray-600 dark:text-gray-400 text-4xl mb-1" />
-						<div className="text-xs font-semibold text-center truncate w-full px-1">
-							{fileObj.name}
-						</div>
-						<div className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
-							{formatFileSize(fileObj.size)}
-						</div>
-					</div>
-				);
-		}
 	};
 
 	// Drag and drop handlers
@@ -247,52 +212,93 @@ function ChatMessageInput({
 		});
 	};
 
-	// Prevent double sending with debouncing
-	const sendingRef = useRef(false);
+	// Cancel edit mode
+	const handleCancelEdit = () => {
+		setEditingMessage(null);
+		setMessageInput('');
+		if (inputRef.current) {
+			inputRef.current.focus();
+		}
+	};
+
+	// Cancel reply mode
+	const handleCancelReply = () => {
+		setReplyingTo(null);
+	};
 
 	// Handle enhanced send action
-	const handleEnhancedSendMessage = () => {
+	const handleEnhancedSendMessage = async () => {
 		// Prevent double sending
 		if (sendingRef.current) {
-			console.log('Already sending, ignoring duplicate send');
 			return;
 		}
 
+		// Handle edit mode
+		if (editingMessage) {
+			if (!messageInput.trim()) {
+				toast.error("Message cannot be empty");
+				return;
+			}
+
+			const messageId = editingMessage._id || editingMessage.id;
+			const conversationIdToUse = editingMessage.conversationId || conversationId;
+
+			if (!messageId || !conversationIdToUse) {
+				toast.error("Invalid message data");
+				return;
+			}
+
+			try {
+				sendingRef.current = true;
+				// Call editMessage with messageId and newContent
+				await editMessage(messageId, messageInput.trim());
+				setEditingMessage(null);
+				setMessageInput('');
+				toast.success("Message edited");
+			} catch (error) {
+				console.error("Edit error:", error);
+				toast.error(error.message || "Failed to edit message");
+			} finally {
+				sendingRef.current = false;
+			}
+			return;
+		}
+
+		// Stop typing indicator
 		if (conversationId && typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
 			emitStopTyping(conversationId);
 		}
 
 		if (selectedFiles.length > 0) {
-			// Handle file sending - you can implement your file upload logic here
+			// Handle file sending
 			console.log('Sending files:', selectedFiles, 'with caption:', messageInput);
-			// Clean up
 			selectedFiles.forEach(f => {
 				if (f.preview) URL.revokeObjectURL(f.preview);
 			});
 			setSelectedFiles([]);
 			setMessageInput('');
+			setReplyingTo(null);
 		} else if (messageInput.trim()) {
-			// Set sending flag to prevent duplicates
 			sendingRef.current = true;
 
-			// Use your existing message sending logic but create a mock event
-			const mockEvent = { preventDefault: () => { } };
+			// Create mock event
+			const mockEvent = {
+				preventDefault: () => { },
+			};
 
-			// Call handleSendMessage (it doesn't return a Promise)
-			handleSendMessage(mockEvent);
+			// Call handleSendMessage with replyingTo
+			handleSendMessage(mockEvent, replyingTo);
 
-			// Reset sending flag after a short delay to prevent rapid clicking
 			setTimeout(() => {
 				sendingRef.current = false;
-			}, 1000);
+			}, 500);
 		}
 	};
 
-	// Add this useEffect at the end of your component
+	// Cleanup on unmount
 	useEffect(() => {
 		return () => {
-			// Cleanup: stop typing when component unmounts
 			if (conversationId && typingTimeoutRef.current) {
 				clearTimeout(typingTimeoutRef.current);
 				emitStopTyping(conversationId);
@@ -382,7 +388,6 @@ function ChatMessageInput({
 			createdAt: new Date().toISOString(),
 		};
 
-		// You can implement your poll sending logic here
 		console.log('Sending poll:', pollData);
 
 		setPollQuestion('');
@@ -433,6 +438,61 @@ function ChatMessageInput({
 				</div>
 			)}
 
+			{/* Reply Preview */}
+			{replyingTo && !editingMessage && (
+				<div className="bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 py-3">
+					<div className="flex items-start justify-between gap-3">
+						<div className="flex-1 border-l-4 border-green-500 pl-3 min-w-0">
+							<p className="text-xs font-semibold text-green-600 dark:text-green-400 mb-0.5">
+								Replying to {
+									replyingTo.sender?.firstName ||
+									replyingTo.sender?.name ||
+									replyingTo.sender?.username ||
+									replyingTo.senderName ||
+									'User'
+								}
+							</p>
+							<p className="text-sm text-gray-700 dark:text-gray-300 truncate">
+								{replyingTo.content || replyingTo.text || 'Message'}
+							</p>
+						</div>
+						<button
+							onClick={handleCancelReply}
+							className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors flex-shrink-0"
+							aria-label="Cancel reply"
+						>
+							<X className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+						</button>
+					</div>
+				</div>
+			)}
+
+			{/* Edit Preview */}
+			{editingMessage && (
+				<div className="bg-amber-50 dark:bg-amber-900/20 border-t border-amber-200 dark:border-amber-800 px-4 py-3">
+					<div className="flex items-center justify-between">
+						<div className="flex items-center gap-2">
+							<div className="w-1 h-8 bg-amber-500 rounded-full"></div>
+							<div>
+								<p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+									Editing message
+								</p>
+								<p className="text-xs text-amber-600 dark:text-amber-500">
+									Press Esc to cancel
+								</p>
+							</div>
+						</div>
+						<button
+							onClick={handleCancelEdit}
+							className="p-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-full transition-colors"
+							aria-label="Cancel edit"
+						>
+							<X className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+						</button>
+					</div>
+				</div>
+			)}
+
 			{/* File Preview Area */}
 			{selectedFiles.length > 0 && (
 				<div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 pt-0">
@@ -442,11 +502,28 @@ function ChatMessageInput({
 								<button
 									onClick={() => removeSelectedFile(fileObj.id)}
 									className="absolute top-1 right-1 z-10 bg-black bg-opacity-60 hover:bg-opacity-80 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm transition-all"
+									aria-label="Remove file"
 								>
 									<X />
 								</button>
 								<div className="w-full h-full flex items-center justify-center relative">
-									{getFilePreviewComponent(fileObj)}
+									{fileObj.type === 'image' && fileObj.preview && (
+										<img src={fileObj.preview} alt={fileObj.name} className="w-full h-full object-cover" />
+									)}
+									{fileObj.type === 'video' && fileObj.preview && (
+										<video src={fileObj.preview} className="w-full h-full object-cover" />
+									)}
+									{(fileObj.type === 'file' || fileObj.type === 'pdf') && (
+										<div className="flex flex-col items-center justify-center p-2">
+											<FileText className="h-8 w-8 text-gray-500 mb-1" />
+											<p className="text-xs text-gray-600 dark:text-gray-400 text-center truncate w-full px-1">
+												{fileObj.name}
+											</p>
+											<p className="text-xs text-gray-500 dark:text-gray-500">
+												{formatFileSize(fileObj.size)}
+											</p>
+										</div>
+									)}
 								</div>
 							</div>
 						))}
@@ -456,16 +533,15 @@ function ChatMessageInput({
 
 			{/* Main Input Area */}
 			<div className="relative">
-				{/* Message Input Form */}
 				<div className="p-4 flex items-end space-x-2 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
 
-					{/* 🚀 MODIFICATION START: Emoji Button/Picker container */}
+					{/* Emoji Button/Picker container */}
 					<div className="relative" ref={emojiRef}>
 						<button
 							type="button"
 							onClick={() => {
 								setShowEmojiPicker(prev => !prev);
-								if (attachmentMenuOpen) setAttachmentMenuOpen(false); // Close attachment menu on opening emoji
+								if (attachmentMenuOpen) setAttachmentMenuOpen(false);
 							}}
 							className={`p-2 rounded-full transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-700 ${showEmojiPicker ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
 							aria-label="Toggle emoji picker"
@@ -473,7 +549,6 @@ function ChatMessageInput({
 							<Smile className="h-6 w-6 text-gray-500 dark:text-gray-400" />
 						</button>
 
-						{/* Emoji Picker Menu */}
 						{showEmojiPicker && (
 							<div className="absolute bottom-full left-1 mb-4 z-20">
 								<div className="transform scale-75 sm:scale-90 md:scale-100 origin-bottom-left">
@@ -483,7 +558,6 @@ function ChatMessageInput({
 										onEmojiClick={(emoji) => {
 											setMessageInput(prev => prev + emoji.emoji);
 											setShowEmojiPicker(false);
-											// Focus input after selection for better UX
 											if (inputRef.current) {
 												inputRef.current.focus();
 											}
@@ -496,43 +570,43 @@ function ChatMessageInput({
 							</div>
 						)}
 					</div>
-					{/* 🚀 MODIFICATION END: Emoji Button/Picker container */}
 
 					{/* Attachment Button with Menu */}
-					<div className="relative" ref={attachmentRef}>
-						<button
-							type="button"
-							onClick={() => {
-								setAttachmentMenuOpen(prev => !prev);
-								if (showEmojiPicker) setShowEmojiPicker(false); // Close emoji picker on opening attachment
-							}}
-							className={`p-2 rounded-full transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-700 ${attachmentMenuOpen ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
-							aria-label="Attach file"
-						>
-							<Paperclip className="h-6 w-6 text-gray-500 dark:text-gray-400" />
-						</button>
+					{!editingMessage && (
+						<div className="relative" ref={attachmentRef}>
+							<button
+								type="button"
+								onClick={() => {
+									setAttachmentMenuOpen(prev => !prev);
+									if (showEmojiPicker) setShowEmojiPicker(false);
+								}}
+								className={`p-2 rounded-full transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-700 ${attachmentMenuOpen ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
+								aria-label="Attach file"
+							>
+								<Paperclip className="h-6 w-6 text-gray-500 dark:text-gray-400" />
+							</button>
 
-						{/* Attachment Menu */}
-						{attachmentMenuOpen && (
-							<div className="absolute bottom-14 left-0 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-2 z-50 min-w-[200px]">
-								{attachmentOptions.map((option, index) => (
-									<button
-										key={index}
-										onClick={(e) => {
-											e.stopPropagation();
-											option.onClick();
-										}}
-										className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all duration-200 text-left"
-									>
-										<div className={`${option.color} p-2 rounded-full`}>
-											<option.icon className="text-white text-lg" />
-										</div>
-										<span className="text-gray-900 dark:text-white text-sm">{option.label}</span>
-									</button>
-								))}
-							</div>
-						)}
-					</div>
+							{attachmentMenuOpen && (
+								<div className="absolute bottom-14 left-0 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-2 z-50 min-w-[200px]">
+									{attachmentOptions.map((option, index) => (
+										<button
+											key={index}
+											onClick={(e) => {
+												e.stopPropagation();
+												option.onClick();
+											}}
+											className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all duration-200 text-left"
+										>
+											<div className={`${option.color} p-2 rounded-full`}>
+												<option.icon className="text-white text-lg" />
+											</div>
+											<span className="text-gray-900 dark:text-white text-sm">{option.label}</span>
+										</button>
+									))}
+								</div>
+							)}
+						</div>
+					)}
 
 					{/* Hidden File Inputs */}
 					<input
@@ -567,7 +641,9 @@ function ChatMessageInput({
 							value={messageInput}
 							onChange={e => {
 								setMessageInput(e.target.value);
-								handleTypingIndicator();
+								if (!editingMessage) {
+									handleTypingIndicator();
+								}
 							}}
 							onKeyDown={(e) => {
 								if (e.key === 'Enter' && !e.shiftKey) {
@@ -575,7 +651,13 @@ function ChatMessageInput({
 									handleEnhancedSendMessage();
 								}
 							}}
-							placeholder={selectedFiles.length > 0 ? "Add a caption..." : "Type a message"}
+							placeholder={
+								editingMessage
+									? "Edit your message..."
+									: selectedFiles.length > 0
+										? "Add a caption..."
+										: "Type a message"
+							}
 							rows={1}
 							className="w-full py-2 px-4 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200 resize-none bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 border border-gray-200 dark:border-gray-600 max-h-32"
 							style={{ minHeight: '40px' }}
@@ -595,7 +677,7 @@ function ChatMessageInput({
 							onClick={handleEnhancedSendMessage}
 							disabled={sendingRef.current}
 							className="p-2 bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-full transition-all duration-200 transform hover:scale-105 active:scale-95"
-							aria-label="Send message"
+							aria-label={editingMessage ? "Save edit" : "Send message"}
 						>
 							<Send className="h-6 w-6" />
 						</button>

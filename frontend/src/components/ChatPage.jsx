@@ -1,10 +1,4 @@
-import React, { useEffect, useState } from 'react';
-// IMPORTANT: PLEASE ADJUST THESE PATHS IF YOUR FILE STRUCTURE DIFFERS.
-// These paths assume ChatPage.jsx is DIRECTLY inside your 'src/' directory.
-// For example, if ChatPage.jsx is in 'src/pages/', you might need:
-// import { useChatStore } from '../store/chatStore';
-// import ChatList from '../components/ChatList';
-// etc.
+import { useEffect, useState } from 'react';
 import { useChatStore } from './store/chatStore';
 import { useAuthStore } from './store/authStore';
 import ChatList from './components/ChatList';

@@ -11,6 +11,8 @@ export const useConversationStore = create((set, get) => ({
   // State
   contacts: [],
   loadingContacts: false,
+  isCreatingConversation: false,
+  error: null,
 
   // Actions
   fetchContacts: async () => {
@@ -92,7 +94,6 @@ export const useConversationStore = create((set, get) => ({
               messageCount: conversation.messageCount,
               memberCount: conversation.memberCount,
               isActive: conversation.isActive,
-              // ... other conversation fields
             };
           } catch (convError) {
             console.error(
@@ -120,13 +121,12 @@ export const useConversationStore = create((set, get) => ({
       const errorMessage =
         err.response?.data?.message ||
         "Failed to fetch conversations from backend.";
-      useChatStore.getState().set({ error: errorMessage });
-      set({ loadingContacts: false });
+      set({ error: errorMessage, loadingContacts: false });
       console.error("Error fetching conversations:", err);
     }
   },
 
-  startNewIndividualChat: async (targetUser) => {
+  createDirectConversation: async (userId) => {
     const {
       isAuthenticated,
       setSelectedChat,
@@ -137,21 +137,23 @@ export const useConversationStore = create((set, get) => ({
     } = useChatStore.getState();
 
     if (!isAuthenticated()) {
-      useChatStore.getState().set({ error: "User not authenticated" });
-      throw new Error("User not authenticated.");
+      const error = "User not authenticated";
+      set({ error });
+      throw new Error(error);
     }
 
     const currentUser = useAuthStore.getState().user;
-    if (!currentUser || !targetUser || currentUser._id === targetUser._id) {
-      useChatStore
-        .getState()
-        .set({ error: "Cannot start chat with self or invalid user." });
-      throw new Error("Invalid target user for chat initiation.");
+
+    // Validate user IDs
+    if (!currentUser || !userId) {
+      const error = "Invalid user data";
+      set({ error });
+      throw new Error(error);
     }
 
-    // Check for existing chat locally
-    const expectedConversationId1 = `direct_${currentUser._id}_${targetUser._id}`;
-    const expectedConversationId2 = `direct_${targetUser._id}_${currentUser._id}`;
+    // Check for existing conversation locally
+    const expectedConversationId1 = `direct_${currentUser._id}_${userId}`;
+    const expectedConversationId2 = `direct_${userId}_${currentUser._id}`;
 
     const existingContact = get().contacts.find(
       (c) =>
@@ -161,74 +163,146 @@ export const useConversationStore = create((set, get) => ({
         c.id === expectedConversationId2
     );
 
+    // If conversation exists, select it and return
     if (existingContact) {
       setSelectedChat(existingContact.conversationId);
-      return existingContact.conversationId;
+      set({ error: null });
+      return existingContact;
     }
 
-    try {
-      const response = await api.post(CREATE_DIRECT_CONVERSATION, {
-        userId: targetUser._id,
-      });
-      const { conversation, isNewConversation } = response.data;
+    // Create new conversation
+    set({ isCreatingConversation: true, error: null });
 
-      const otherParticipant = conversation.participants.find(
-        (p) => p.user._id !== currentUser._id
+    try {
+      const response = await api.post(CREATE_DIRECT_CONVERSATION, { userId });
+
+      console.log("API Response:", response.data); // Debug log
+
+      // Handle different response structures
+      let conversation, isNewConversation;
+
+      if (response.data.conversation) {
+        // Structure: { conversation: {...}, isNewConversation: true }
+        conversation = response.data.conversation;
+        isNewConversation = response.data.isNewConversation;
+      } else if (response.data.conversationId) {
+        // Structure: { conversationId: "...", participants: [...], ... }
+        conversation = response.data;
+        isNewConversation = response.data.isNewConversation !== false;
+      } else if (response.data.data) {
+        // Structure: { data: { conversation: {...} } }
+        conversation = response.data.data.conversation || response.data.data;
+        isNewConversation = response.data.data.isNewConversation;
+      } else {
+        console.error("Unexpected response structure:", response.data);
+        throw new Error("Invalid conversation response structure");
+      }
+
+      // Validate conversation object
+      if (!conversation || !conversation.conversationId) {
+        console.error("Invalid conversation object:", conversation);
+        throw new Error("Conversation missing conversationId");
+      }
+
+      const otherParticipant = conversation.participants?.find(
+        (p) => p.user?._id !== currentUser._id || p._id !== currentUser._id
       );
 
       if (!otherParticipant) {
+        console.error(
+          "Could not find other participant:",
+          conversation.participants
+        );
         throw new Error("Could not find other participant in conversation");
       }
 
-      const contact = otherParticipant.user;
-      const displayName = getFormattedDisplayName(contact);
-      const displayAvatar = getFormattedAvatar(contact, displayName);
+      // Extract user data - handle both nested and flat structures
+      const contactUser = otherParticipant.user || otherParticipant;
+      const displayName = getFormattedDisplayName(contactUser);
+      const displayAvatar = getFormattedAvatar(contactUser, displayName);
 
       const newContact = {
         id: conversation.conversationId,
         conversationId: conversation.conversationId,
         name: displayName,
         avatar: displayAvatar,
-        lastMessage: isNewConversation ? "Chat started" : "No messages yet.",
+        lastMessage:
+          conversation.lastMessage?.content ||
+          (isNewConversation ? "Chat started" : "No messages yet."),
         time: conversation.lastActivity || new Date().toISOString(),
         lastActivity: conversation.lastActivity || new Date().toISOString(),
         type: conversation.type || "direct",
-        participants: conversation.participants.map((p) => ({
-          _id: p.user._id,
-          firstName: p.user.firstName,
-          lastName: p.user.lastName,
-          // ... other participant fields
-          isOnline: onlineUsers.includes(p.user._id),
-        })),
+        participants: (conversation.participants || []).map((p) => {
+          const user = p.user || p;
+          return {
+            _id: user._id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            image: user.image,
+            email: user.email,
+            username: user.username,
+            role: p.role,
+            isActive: p.isActive,
+            isMuted: p.isMuted,
+            joinedAt: p.joinedAt,
+            permissions: p.permissions,
+            isOnline: onlineUsers.includes(user._id),
+          };
+        }),
         unreadCount: 0,
-        messageCount: conversation.messageCount,
-        memberCount: conversation.memberCount,
-        // ... other conversation fields
+        messageCount: conversation.messageCount || 0,
+        memberCount: conversation.memberCount || 2,
+        isActive: conversation.isActive !== false,
       };
 
-      set((state) => ({
-        contacts: [newContact, ...state.contacts].sort(
-          (a, b) => new Date(b.lastActivity) - new Date(a.lastActivity)
-        ),
-      }));
+      // Check again if conversation was added while we were creating it (race condition)
+      const existingAfterCreate = get().contacts.find(
+        (c) => c.conversationId === newContact.conversationId
+      );
 
-      setSelectedChat(newContact.conversationId);
-
-      if (!isNewConversation && conversation.messageCount > 0) {
-        // Fetch messages for existing conversation
-        fetchMessages(newContact.conversationId);
+      if (existingAfterCreate) {
+        // Update existing instead of adding duplicate
+        set((state) => ({
+          contacts: state.contacts
+            .map((c) =>
+              c.conversationId === newContact.conversationId ? newContact : c
+            )
+            .sort(
+              (a, b) => new Date(b.lastActivity) - new Date(a.lastActivity)
+            ),
+          isCreatingConversation: false,
+        }));
       } else {
-        // Ensure messages state is initialized as an empty array
-        useMessageStore.getState().addMessage(newContact.conversationId, []);
+        // Add new conversation to the list
+        set((state) => ({
+          contacts: [newContact, ...state.contacts].sort(
+            (a, b) => new Date(b.lastActivity) - new Date(a.lastActivity)
+          ),
+          isCreatingConversation: false,
+        }));
       }
 
-      return newContact.conversationId;
+      // Select the newly created conversation
+      setSelectedChat(newContact.conversationId);
+
+      // Handle messages for the conversation
+      if (!isNewConversation && conversation.messageCount > 0) {
+        // Fetch messages for existing conversation
+        await fetchMessages(newContact.conversationId);
+      }
+
+      return newContact;
     } catch (err) {
       const errorMessage = get().getDetailedErrorMessage(err);
-      useChatStore.getState().set({ error: errorMessage });
-      console.error("Error initiating new conversation:", err);
+      set({ error: errorMessage, isCreatingConversation: false });
+      console.error("Error creating direct conversation:", err);
       throw new Error(errorMessage);
     }
+  },
+
+  // Alias for backward compatibility
+  startNewIndividualChat: async (targetUser) => {
+    return get().createDirectConversation(targetUser._id);
   },
 
   // Helper functions to update contact list
@@ -305,6 +379,25 @@ export const useConversationStore = create((set, get) => ({
     }));
   },
 
+  // Contact Management
+  removeContact: (conversationId) => {
+    set((state) => ({
+      contacts: state.contacts.filter(
+        (c) => c.conversationId !== conversationId
+      ),
+    }));
+  },
+
+  updateContact: (conversationId, updates) => {
+    set((state) => ({
+      contacts: state.contacts.map((contact) =>
+        contact.conversationId === conversationId
+          ? { ...contact, ...updates }
+          : contact
+      ),
+    }));
+  },
+
   // Participant/Metadata Getters
   getCurrentChatParticipant: () => {
     const state = get();
@@ -344,24 +437,32 @@ export const useConversationStore = create((set, get) => ({
     };
   },
 
+  getContactByConversationId: (conversationId) => {
+    return get().contacts.find(
+      (c) => c.conversationId === conversationId || c.id === conversationId
+    );
+  },
+
   // Utility for Error Messages
   getDetailedErrorMessage: (err) => {
-    let errorMessage = "Failed to send message.";
+    let errorMessage = "Failed to perform operation.";
 
     if (err.response?.status === 403) {
       if (err.response.data?.message?.includes("muted")) {
         errorMessage = "You are muted in this conversation.";
       } else if (err.response.data?.message?.includes("admin")) {
-        errorMessage = "Only admins can send messages in this conversation.";
+        errorMessage = "Only admins can perform this action.";
       } else if (err.response.data?.message?.includes("member")) {
         errorMessage = "You are not a member of this conversation.";
       } else {
         errorMessage = err.response.data?.message || "Permission denied.";
       }
     } else if (err.response?.status === 404) {
-      errorMessage = "Conversation not found.";
+      errorMessage = "Resource not found.";
     } else if (err.response?.status === 400) {
-      errorMessage = err.response.data?.message || "Invalid message data.";
+      errorMessage = err.response.data?.message || "Invalid request data.";
+    } else if (err.response?.status === 409) {
+      errorMessage = err.response.data?.message || "Conflict detected.";
     } else if (err.response?.data?.message) {
       errorMessage = err.response.data.message;
     } else if (err.message) {
@@ -370,5 +471,13 @@ export const useConversationStore = create((set, get) => ({
     return errorMessage;
   },
 
-  clearConversationState: () => set({ contacts: [], loadingContacts: false }),
+  clearError: () => set({ error: null }),
+
+  clearConversationState: () =>
+    set({
+      contacts: [],
+      loadingContacts: false,
+      isCreatingConversation: false,
+      error: null,
+    }),
 }));

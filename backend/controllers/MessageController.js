@@ -6,7 +6,43 @@ import Notification from "../models/NotificationModel.js";
 import { getIo, isUserOnline, getUserSocketIds } from "../socket.js";
 import { sendErrorResponse } from "../middleware/errorHandler.js";
 
-// @desc    Send a new message (text or file)
+// Helper function to format reply data consistently
+const formatReplyData = (repliedMsg, currentUserId) => {
+  if (!repliedMsg) return null;
+
+  const isDeletedForUser = repliedMsg.deletedFor?.some(
+    (id) => id.toString() === currentUserId.toString()
+  );
+
+  if (repliedMsg.isDeleted || isDeletedForUser) {
+    return {
+      _id: repliedMsg._id,
+      content: "This message was deleted",
+      type: repliedMsg.type,
+      sender: repliedMsg.sender,
+      isDeleted: true,
+      isAvailable: false,
+    };
+  }
+
+  return {
+    _id: repliedMsg._id,
+    content: repliedMsg.content,
+    type: repliedMsg.type,
+    sender: repliedMsg.sender,
+    file: repliedMsg.file
+      ? {
+        fileName: repliedMsg.file.fileName,
+        fileMimeType: repliedMsg.file.fileMimeType,
+        thumbnailPath: repliedMsg.file.thumbnailPath,
+      }
+      : undefined,
+    isDeleted: false,
+    isAvailable: true,
+  };
+};
+
+// @desc    Send a new message (text or file) with reply support
 // @route   POST /api/messages/send
 // @access  Private
 export const sendMessage = asyncHandler(async (req, res) => {
@@ -15,6 +51,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
     content,
     type,
     isForwarded,
+    replyTo, // ID of the message being replied to
     metadata = {},
   } = req.body;
   const senderId = req.user.id;
@@ -71,19 +108,54 @@ export const sendMessage = asyncHandler(async (req, res) => {
     );
   }
 
+  // Validate replyTo if provided
+  if (replyTo) {
+    const repliedMessage = await Message.findById(replyTo);
+    if (!repliedMessage) {
+      return sendErrorResponse(res, null, "Replied message not found.", 404);
+    }
+    if (repliedMessage.conversationId !== conversationId) {
+      return sendErrorResponse(
+        res,
+        null,
+        "Cannot reply to a message from a different conversation.",
+        400
+      );
+    }
+    // Check if the replied message is deleted
+    if (repliedMessage.isDeleted) {
+      return sendErrorResponse(
+        res,
+        null,
+        "Cannot reply to a deleted message.",
+        400
+      );
+    }
+    // Check if the message is deleted for the current user
+    if (repliedMessage.isDeletedFor(senderId)) {
+      return sendErrorResponse(
+        res,
+        null,
+        "Cannot reply to a deleted message.",
+        400
+      );
+    }
+  }
+
   // Construct message object
   let messageData = {
     conversationId,
     sender: senderId,
-    readBy: [{ user: senderId, readAt: new Date() }],
+    readReceipts: [{ user: senderId, readAt: new Date() }],
     isForwarded: !!isForwarded,
+    replyTo: replyTo || null,
     metadata,
     deliveryStatus: "sent",
   };
 
   if (file) {
     messageData.content = content || "";
-    messageData.media = {
+    messageData.file = {
       fileName: file.originalname,
       filePath: `/uploads/${file.filename}`,
       fileMimeType: file.mimetype,
@@ -92,20 +164,39 @@ export const sendMessage = asyncHandler(async (req, res) => {
     messageData.type = file.mimetype.startsWith("image/")
       ? "image"
       : file.mimetype.startsWith("video/")
-      ? "video"
-      : file.mimetype.startsWith("audio/")
-      ? "audio"
-      : "file";
+        ? "video"
+        : file.mimetype.startsWith("audio/")
+          ? "audio"
+          : "file";
   } else {
     messageData.content = content;
     messageData.type = type || "text";
   }
 
   const message = await Message.create(messageData);
-  const populatedMessage = await Message.findById(message._id).populate(
-    "sender",
-    "firstName lastName username name avatar color image"
-  );
+
+  // Populate message with sender and reply details
+  const populatedMessage = await Message.findById(message._id)
+    .populate(
+      "sender",
+      "firstName lastName username name avatar color image isOnline"
+    )
+    .populate({
+      path: "replyTo",
+      select: "content type sender file isDeleted deletedFor",
+      populate: {
+        path: "sender",
+        select: "firstName lastName username name avatar",
+      },
+    });
+
+  // Format reply data for frontend (handle deleted messages)
+  if (populatedMessage.replyTo) {
+    populatedMessage.replyTo = formatReplyData(
+      populatedMessage.replyTo,
+      senderId
+    );
+  }
 
   // Update conversation's last message and activity
   await Conversation.findOneAndUpdate(
@@ -152,23 +243,59 @@ export const sendMessage = asyncHandler(async (req, res) => {
       mentionedUsers.map((u) => u._id.toString())
     );
 
+    // If this is a reply, notify the original message sender
+    if (
+      replyTo &&
+      populatedMessage.replyTo &&
+      !populatedMessage.replyTo.isDeleted
+    ) {
+      const originalSenderId = populatedMessage.replyTo.sender._id.toString();
+      if (originalSenderId !== senderId.toString()) {
+        const isOriginalSenderOnline = isUserOnline(originalSenderId);
+        if (!isOriginalSenderOnline) {
+          await Notification.create({
+            recipient: originalSenderId,
+            sender: senderId,
+            type: "reply",
+            content: `${req.user.username || req.user.firstName
+              } replied to your message in ${conversation.name ? "#" + conversation.name : "a chat"
+              }`,
+            relatedEntity: { id: message._id, kind: "Message" },
+            metadata: {
+              replyPreview: message.content?.toString().substring(0, 50) || "",
+              originalMessageId: replyTo,
+              conversationId: conversationId,
+            },
+          });
+        }
+      }
+    }
+
+    // Send notifications to other recipients
     for (const recipient of recipients) {
       const recipientId = recipient.user.toString();
+
+      // Skip if already notified as reply recipient
+      if (
+        replyTo &&
+        populatedMessage.replyTo &&
+        recipientId === populatedMessage.replyTo.sender._id.toString()
+      ) {
+        continue;
+      }
+
       const isRecipientOnline = isUserOnline(recipientId);
 
       // Create notification if user is offline or if they were mentioned
       if (!isRecipientOnline || mentionedUserIds.has(recipientId)) {
         let notificationContent;
         if (mentionedUserIds.has(recipientId)) {
-          notificationContent = `@${
-            req.user.username || req.user.firstName
-          } mentioned you in ${
-            conversation.name ? "#" + conversation.name : "a chat"
-          }`;
+          notificationContent = `@${req.user.username || req.user.firstName
+            } mentioned you in ${conversation.name ? "#" + conversation.name : "a chat"
+            }`;
         } else {
-          notificationContent = `New message in ${
-            conversation.name ? "#" + conversation.name : "a chat"
-          } from ${req.user.username || req.user.firstName}`;
+          notificationContent = `New message in ${conversation.name ? "#" + conversation.name : "a chat"
+            } from ${req.user.username || req.user.firstName}`;
         }
 
         await Notification.create({
@@ -187,7 +314,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
   res.status(201).json(populatedMessage);
 });
 
-// @desc    Get messages for a conversation
+// @desc    Get messages for a conversation with reply support
 // @route   GET /api/messages/:conversationId
 // @access  Private
 export const getMessages = asyncHandler(async (req, res) => {
@@ -211,41 +338,26 @@ export const getMessages = asyncHandler(async (req, res) => {
     );
   }
 
-  const options = {
+  // Use custom static method with reply support
+  const messages = await Message.findConversationMessages(conversationId, {
     page: parseInt(page, 10),
     limit: parseInt(limit, 10),
-    sort: { createdAt: -1 },
-    populate: {
-      path: "sender",
-      select: "firstName lastName username name avatar image isOnline",
-    },
-  };
-
-  const messages = await Message.paginate(
-    {
-      conversationId,
-      isDeleted: false,
-      deletedFor: { $ne: currentUserId },
-    },
-    options
-  );
-
-  // CHANGED: Reverse the docs array so oldest messages appear first in the UI
-  // This allows proper chronological display while fetching newest first for pagination
-  const reversedDocs = [...messages.docs].reverse();
+    userId: currentUserId,
+    includeDeleted: false,
+  });
 
   // Mark messages as read - only for messages from other users
-  const messagesToMarkRead = reversedDocs.filter((msg) => {
+  const messagesToMarkRead = messages.filter((msg) => {
     // Skip messages sent by the current user
-    if (msg.sender.toString() === currentUserId.toString()) {
+    if (msg.sender._id.toString() === currentUserId.toString()) {
       return false;
     }
 
-    if (!msg.readBy || !Array.isArray(msg.readBy)) {
+    if (!msg.readReceipts || !Array.isArray(msg.readReceipts)) {
       return true;
     }
 
-    const hasRead = msg.readBy.some((receipt) => {
+    const hasRead = msg.readReceipts.some((receipt) => {
       if (typeof receipt === "object" && receipt.user) {
         return receipt.user.toString() === currentUserId.toString();
       }
@@ -263,7 +375,7 @@ export const getMessages = asyncHandler(async (req, res) => {
       { _id: { $in: messageIdsToUpdate } },
       {
         $addToSet: {
-          readBy: {
+          readReceipts: {
             user: currentUserId,
             readAt: readAt,
           },
@@ -286,7 +398,7 @@ export const getMessages = asyncHandler(async (req, res) => {
       // Emit individual message_read events for each sender
       const senderIds = new Set();
       messagesToMarkRead.forEach((msg) => {
-        const senderId = msg.sender.toString();
+        const senderId = msg.sender._id.toString();
         if (!senderIds.has(senderId)) {
           senderIds.add(senderId);
           const senderSocketIds = getUserSocketIds(senderId);
@@ -309,10 +421,15 @@ export const getMessages = asyncHandler(async (req, res) => {
     }
   }
 
-  // CHANGED: Return reversed docs with pagination metadata
+  // Return messages with pagination-like structure for frontend compatibility
   res.status(200).json({
-    ...messages,
-    docs: reversedDocs,
+    docs: messages,
+    totalDocs: messages.length,
+    limit: parseInt(limit, 10),
+    page: parseInt(page, 10),
+    totalPages: Math.ceil(messages.length / parseInt(limit, 10)),
+    hasNextPage: messages.length === parseInt(limit, 10),
+    hasPrevPage: parseInt(page, 10) > 1,
   });
 });
 
@@ -324,13 +441,11 @@ export const editMessage = asyncHandler(async (req, res) => {
   const { newContent } = req.body;
   const currentUserId = req.user.id;
 
-  // FIXED: Don't populate sender here, just fetch the raw message
   const message = await Message.findById(messageId);
   if (!message) {
     return sendErrorResponse(res, null, "Message not found.", 404);
   }
 
-  // FIXED: Check sender directly without populate (sender is already an ObjectId)
   if (!message.sender) {
     return sendErrorResponse(res, null, "Sender information is missing.", 400);
   }
@@ -348,7 +463,6 @@ export const editMessage = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, null, "Cannot edit a deleted message.", 400);
   }
 
-  // FIXED: Now canUserEdit will work because sender is an ObjectId
   if (message.canUserEdit && !message.canUserEdit(currentUserId)) {
     return sendErrorResponse(res, null, "Editing time limit has expired.", 403);
   }
@@ -358,11 +472,28 @@ export const editMessage = asyncHandler(async (req, res) => {
   message.editedAt = new Date();
   await message.save();
 
-  // Populate after saving
-  const populatedMessage = await Message.findById(message._id).populate(
-    "sender",
-    "firstName lastName username name avatar image isOnline"
-  );
+  // Populate after saving with reply support
+  const populatedMessage = await Message.findById(message._id)
+    .populate(
+      "sender",
+      "firstName lastName username name avatar image isOnline"
+    )
+    .populate({
+      path: "replyTo",
+      select: "content type sender file isDeleted deletedFor",
+      populate: {
+        path: "sender",
+        select: "firstName lastName username name avatar",
+      },
+    });
+
+  // Format reply data for frontend
+  if (populatedMessage.replyTo) {
+    populatedMessage.replyTo = formatReplyData(
+      populatedMessage.replyTo,
+      currentUserId
+    );
+  }
 
   try {
     const io = getIo();
@@ -424,10 +555,11 @@ export const deleteMessage = asyncHandler(async (req, res) => {
 
     message.isDeleted = true;
     message.content = "This message was deleted.";
-    message.media = undefined;
     message.file = undefined;
+    message.location = undefined;
+    message.contact = undefined;
     message.reactions = [];
-    message.readBy = [];
+    message.readReceipts = [];
     message.deletedFor = [];
   } else if (deleteFor === "me") {
     message.deletedFor.push(currentUserId);
@@ -447,6 +579,7 @@ export const deleteMessage = asyncHandler(async (req, res) => {
       conversationId: message.conversationId,
       messageId,
       deleteFor,
+      deletedBy: currentUserId,
     });
     console.log(`✅ Delete emitted for message ${messageId}`);
   } catch (error) {
@@ -466,44 +599,39 @@ export const addReaction = asyncHandler(async (req, res) => {
   const { emoji } = req.body;
   const currentUserId = req.user.id;
 
+  if (!emoji) {
+    return sendErrorResponse(res, null, "Emoji is required.", 400);
+  }
+
   const message = await Message.findById(messageId);
   if (!message) {
     return sendErrorResponse(res, null, "Message not found.", 404);
   }
 
-  const reactionExists = message.reactions.some(
-    (r) => r.user.toString() === currentUserId && r.emoji === emoji
-  );
-  if (reactionExists) {
-    return sendErrorResponse(
-      res,
-      null,
-      "You have already reacted with this emoji.",
-      400
-    );
-  }
-
-  const newReaction = { emoji, user: currentUserId };
-  message.reactions.push(newReaction);
-  await message.save();
-
+  // Use the addReaction method from the model
   try {
+    await message.addReaction(currentUserId, emoji);
+
+    // Reload to get updated reactions
+    const updatedMessage = await Message.findById(messageId);
+
     const io = getIo();
     io.to(message.conversationId).emit("message_reaction", {
       conversationId: message.conversationId,
       messageId,
-      reaction: newReaction,
-      reactions: message.reactions,
+      reaction: { emoji, user: currentUserId },
+      reactions: updatedMessage.reactions,
     });
     console.log(`✅ Reaction emitted for message ${messageId}`);
-  } catch (error) {
-    console.error("Error emitting reaction:", error);
-  }
 
-  res.status(200).json({
-    message: "Reaction added successfully.",
-    reactions: message.reactions,
-  });
+    res.status(200).json({
+      message: "Reaction added successfully.",
+      reactions: updatedMessage.reactions,
+    });
+  } catch (error) {
+    console.error("Error adding reaction:", error);
+    return sendErrorResponse(res, null, "Failed to add reaction.", 500);
+  }
 });
 
 // @desc    Remove a reaction from a message
@@ -514,50 +642,42 @@ export const removeReaction = asyncHandler(async (req, res) => {
   const { emoji } = req.body;
   const currentUserId = req.user.id;
 
+  if (!emoji) {
+    return sendErrorResponse(res, null, "Emoji is required.", 400);
+  }
+
   const message = await Message.findById(messageId);
   if (!message) {
     return sendErrorResponse(res, null, "Message not found.", 404);
   }
 
-  const initialLength = message.reactions.length;
-  const removedReaction = message.reactions.find(
-    (r) => r.user.toString() === currentUserId && r.emoji === emoji
-  );
-
-  message.reactions = message.reactions.filter(
-    (r) => !(r.user.toString() === currentUserId && r.emoji === emoji)
-  );
-
-  if (message.reactions.length === initialLength) {
-    return sendErrorResponse(
-      res,
-      null,
-      "Reaction not found or you did not add this reaction.",
-      404
-    );
-  }
-  await message.save();
-
+  // Use the removeReaction method from the model
   try {
+    await message.removeReaction(currentUserId, emoji);
+
+    // Reload to get updated reactions
+    const updatedMessage = await Message.findById(messageId);
+
     const io = getIo();
     io.to(message.conversationId).emit("message_reaction", {
       conversationId: message.conversationId,
       messageId,
-      reaction: { ...removedReaction, removed: true },
-      reactions: message.reactions,
+      reaction: { emoji, user: currentUserId, removed: true },
+      reactions: updatedMessage.reactions,
     });
     console.log(`✅ Reaction removal emitted for message ${messageId}`);
-  } catch (error) {
-    console.error("Error emitting reaction removal:", error);
-  }
 
-  res.status(200).json({
-    message: "Reaction removed successfully.",
-    reactions: message.reactions,
-  });
+    res.status(200).json({
+      message: "Reaction removed successfully.",
+      reactions: updatedMessage.reactions,
+    });
+  } catch (error) {
+    console.error("Error removing reaction:", error);
+    return sendErrorResponse(res, null, "Failed to remove reaction.", 500);
+  }
 });
 
-// @desc    Forward a message
+// @desc    Forward a message (with reply support)
 // @route   POST /api/messages/:messageId/forward
 // @access  Private
 export const forwardMessage = asyncHandler(async (req, res) => {
@@ -625,10 +745,18 @@ export const forwardMessage = asyncHandler(async (req, res) => {
       sender: currentUserId,
       content: originalMessage.content,
       type: originalMessage.type,
-      media: originalMessage.media || originalMessage.file,
+      file: originalMessage.file,
+      location: originalMessage.location,
+      contact: originalMessage.contact,
       metadata: originalMessage.metadata || {},
-      isForwarded: true,
-      readBy: [{ user: currentUserId, readAt: new Date() }],
+      replyTo: null, // Clear reply reference when forwarding
+      forwardedFrom: {
+        originalSender: originalMessage.sender,
+        originalConversationId: originalMessage.conversationId,
+        originalMessageId: originalMessage._id,
+        forwardedAt: new Date(),
+      },
+      readReceipts: [{ user: currentUserId, readAt: new Date() }],
       deliveryStatus: "sent",
     };
     const newMessage = await Message.create(newMessageData);
@@ -651,10 +779,16 @@ export const forwardMessage = asyncHandler(async (req, res) => {
       }
     );
 
-    const populatedNewMessage = await Message.findById(newMessage._id).populate(
-      "sender",
-      "firstName lastName username name avatar image isOnline"
-    );
+    const populatedNewMessage = await Message.findById(newMessage._id)
+      .populate(
+        "sender",
+        "firstName lastName username name avatar image isOnline"
+      )
+      .populate(
+        "forwardedFrom.originalSender",
+        "firstName lastName username name avatar"
+      );
+
     forwardedMessages.push(populatedNewMessage);
 
     try {
@@ -684,7 +818,7 @@ export const forwardMessage = asyncHandler(async (req, res) => {
     .json({ message: "Messages forwarded successfully.", forwardedMessages });
 });
 
-// @desc    Search messages
+// @desc    Search messages (with reply support)
 // @route   GET /api/messages/search?query=text&conversationId=chat_id
 // @access  Private
 export const searchMessages = asyncHandler(async (req, res) => {
@@ -721,11 +855,30 @@ export const searchMessages = asyncHandler(async (req, res) => {
     page: parseInt(page, 10),
     limit: parseInt(limit, 10),
     sort: { createdAt: -1 },
-    populate: {
-      path: "sender",
-      select: "firstName lastName username name avatar image isOnline",
-    },
+    populate: [
+      {
+        path: "sender",
+        select: "firstName lastName username name avatar image isOnline",
+      },
+      {
+        path: "replyTo",
+        select: "content type sender file isDeleted deletedFor",
+        populate: {
+          path: "sender",
+          select: "firstName lastName username name avatar",
+        },
+      },
+    ],
   };
   const messages = await Message.paginate(searchFilter, options);
+
+  // Format reply data for deleted messages in search results
+  messages.docs = messages.docs.map((msg) => {
+    if (msg.replyTo) {
+      msg.replyTo = formatReplyData(msg.replyTo, currentUserId);
+    }
+    return msg;
+  });
+
   res.status(200).json(messages);
 });

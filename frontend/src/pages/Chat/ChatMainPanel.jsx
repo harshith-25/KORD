@@ -29,7 +29,6 @@ function ChatMainPanel() {
 	} = useMessageStore();
 
 	const { user: currentUser } = useAuthStore();
-	const { socket } = useSocketStore();
 
 	const contactsArray = contacts || [];
 
@@ -59,6 +58,10 @@ function ChatMainPanel() {
 	const [isAtBottom, setIsAtBottom] = useState(true);
 	const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 	const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+	// NEW: Reply and Edit states
+	const [editingMessage, setEditingMessage] = useState(null);
+	const [replyingTo, setReplyingTo] = useState(null);
 
 	const isGroupChat = selectedChat?.type !== 'direct';
 
@@ -169,10 +172,6 @@ function ChatMainPanel() {
 		};
 	}, []);
 
-	// ⚠️ REMOVED: Duplicate socket message handling
-	// All socket message handling is now centralized in messageStore.js
-	// This prevents double-processing of messages
-
 	const handleScroll = useCallback(() => {
 		if (!messagesContainerRef.current) return;
 
@@ -195,17 +194,54 @@ function ChatMainPanel() {
 		}
 	}, [selectedChatId]);
 
-	const handleSendMessage = useCallback((e) => {
+	const handleSendMessage = useCallback((e, replyToMessage = null) => {
 		e?.preventDefault();
 		if (messageInput.trim() && selectedChatId) {
-			sendMessage(selectedChatId, messageInput.trim());
+			// Prepare metadata with reply information if replying
+			const metadata = {};
+			if (replyToMessage || replyingTo) {
+				const replyMsg = replyToMessage || replyingTo;
+				metadata.replyTo = {
+					messageId: replyMsg._id || replyMsg.id,
+					content: replyMsg.content || replyMsg.text || '',
+					senderId: replyMsg.senderId || replyMsg.sender?._id,
+					senderName: replyMsg.sender?.firstName || replyMsg.sender?.name || replyMsg.senderName || 'User'
+				};
+			}
+
+			sendMessage(
+				selectedChatId,
+				messageInput.trim(),
+				'text',
+				null,
+				false,
+				null,
+				metadata
+			);
 			setMessageInput('');
+			setReplyingTo(null); // Clear reply state after sending
 
 			if (isMobile && inputRef.current) {
 				inputRef.current.focus();
 			}
 		}
-	}, [messageInput, selectedChatId, sendMessage, isMobile]);
+	}, [messageInput, selectedChatId, sendMessage, isMobile, replyingTo]);
+
+	// NEW: Handle reply action
+	const handleReplyMessage = useCallback((message) => {
+		setReplyingTo(message);
+		setEditingMessage(null); // Can't edit and reply at same time
+		if (inputRef.current) {
+			inputRef.current.focus();
+		}
+	}, []);
+
+	// NEW: Handle edit action
+	const handleEditMessage = useCallback((message) => {
+		setEditingMessage(message);
+		setReplyingTo(null); // Can't edit and reply at same time
+		// Input content will be set by ChatMessageInput component
+	}, []);
 
 	useEffect(() => {
 		const handleKeyDown = (e) => {
@@ -214,14 +250,21 @@ function ChatMainPanel() {
 				inputRef.current?.focus();
 			}
 
-			if (e.key === 'Escape' && showEmojiPicker) {
-				setShowEmojiPicker(false);
+			if (e.key === 'Escape') {
+				if (showEmojiPicker) {
+					setShowEmojiPicker(false);
+				} else if (editingMessage) {
+					setEditingMessage(null);
+					setMessageInput('');
+				} else if (replyingTo) {
+					setReplyingTo(null);
+				}
 			}
 		};
 
 		document.addEventListener('keydown', handleKeyDown);
 		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [showEmojiPicker]);
+	}, [showEmojiPicker, editingMessage, replyingTo]);
 
 	if (!currentUser) {
 		return <SignInPlaceholder />;
@@ -258,6 +301,10 @@ function ChatMainPanel() {
 				isTyping={isTyping}
 				typingText={typingText}
 				isMobile={isMobile}
+				onEditMessage={handleEditMessage}
+				onReplyMessage={handleReplyMessage}
+				editingMessage={editingMessage}
+				replyingTo={replyingTo}
 			/>
 
 			<ChatMessageInput
@@ -268,6 +315,10 @@ function ChatMainPanel() {
 				showEmojiPicker={showEmojiPicker}
 				setShowEmojiPicker={setShowEmojiPicker}
 				conversationId={selectedChat?.conversationId}
+				editingMessage={editingMessage}
+				setEditingMessage={setEditingMessage}
+				replyingTo={replyingTo}
+				setReplyingTo={setReplyingTo}
 			/>
 		</div>
 	);

@@ -41,6 +41,20 @@ const processRawMessage = (msg, currentUser, getMessageStatus) => {
     filePath = `${HOST}${filePath}`;
   }
 
+  // Process reply data if present
+  let replyToData = null;
+  if (msg.replyTo) {
+    replyToData = {
+      _id: msg.replyTo._id,
+      content: msg.replyTo.content,
+      type: msg.replyTo.type,
+      sender: msg.replyTo.sender,
+      file: msg.replyTo.file,
+      isDeleted: msg.replyTo.isDeleted || false,
+      isAvailable: msg.replyTo.isAvailable !== false, // Default to true
+    };
+  }
+
   return {
     ...msg,
     id: messageId,
@@ -60,7 +74,8 @@ const processRawMessage = (msg, currentUser, getMessageStatus) => {
     deliveryStatus: messageStatus,
     sender: msgSender,
     senderId: msgSenderId,
-    readBy: msg.readBy || [],
+    readBy: msg.readReceipts || msg.readBy || [], // Support both readReceipts and readBy
+    readReceipts: msg.readReceipts || msg.readBy || [],
     reactions: msg.reactions || [],
     isEdited: msg.isEdited || false,
     isDeleted: msg.isDeleted || false,
@@ -68,6 +83,8 @@ const processRawMessage = (msg, currentUser, getMessageStatus) => {
     file: msg.file ? { ...msg.file, filePath } : undefined,
     media: msg.media,
     metadata: msg.metadata || {},
+    replyTo: replyToData, // NEW: Add reply data
+    replyCount: msg.replyCount || 0, // NEW: Add reply count
   };
 };
 
@@ -79,8 +96,9 @@ export const useMessageStore = create(
       error: null,
       socketListenersInitialized: false,
       pendingOptimisticMessages: new Map(),
-      // NEW: Add pagination tracking
-      messagePagination: {}, // { conversationId: { page, hasMore, totalPages } }
+      messagePagination: {},
+      replyingTo: null, // NEW: Track which message is being replied to
+
       // ==================== HELPER FUNCTIONS ====================
 
       calculateMessageStatus: (message, currentUserId) => {
@@ -99,8 +117,8 @@ export const useMessageStore = create(
         if (message.status === "failed" || message.deliveryStatus === "failed")
           return "failed";
 
-        // For sent messages, check read receipts like WhatsApp
-        const readBy = message.readBy || [];
+        // For sent messages, check read receipts
+        const readBy = message.readReceipts || message.readBy || [];
 
         // If no read receipts yet, it's just sent
         if (readBy.length === 0) return "sent";
@@ -112,10 +130,8 @@ export const useMessageStore = create(
         });
 
         if (othersRead) {
-          // Someone else has read it - mark as read
           return "read";
         } else {
-          // Only sender has read it - mark as delivered
           return "delivered";
         }
       },
@@ -136,7 +152,7 @@ export const useMessageStore = create(
 
           const updatedMessages = messages.map((msg) => {
             if (msg._id === messageId || msg.id === messageId) {
-              const readBy = [...(msg.readBy || [])];
+              const readBy = [...(msg.readReceipts || msg.readBy || [])];
               const alreadyRead = readBy.some((receipt) => {
                 const userId =
                   typeof receipt === "object"
@@ -151,7 +167,7 @@ export const useMessageStore = create(
               }
 
               const newStatus = get().calculateMessageStatus(
-                { ...msg, readBy },
+                { ...msg, readReceipts: readBy, readBy },
                 currentUser?._id
               );
 
@@ -162,6 +178,7 @@ export const useMessageStore = create(
               return {
                 ...msg,
                 readBy,
+                readReceipts: readBy,
                 status: newStatus,
                 deliveryStatus: newStatus,
               };
@@ -173,6 +190,23 @@ export const useMessageStore = create(
             messages: { ...state.messages, [conversationId]: updatedMessages },
           };
         });
+      },
+
+      // ==================== REPLY MANAGEMENT ====================
+
+      // NEW: Set the message to reply to
+      setReplyingTo: (message) => {
+        set({ replyingTo: message });
+      },
+
+      // NEW: Clear the replying state
+      clearReplyingTo: () => {
+        set({ replyingTo: null });
+      },
+
+      // NEW: Get the current replying message
+      getReplyingTo: () => {
+        return get().replyingTo;
       },
 
       // ==================== SOCKET EVENT LISTENERS SETUP ====================
@@ -195,29 +229,24 @@ export const useMessageStore = create(
             senderId?.toString() === currentUser?._id?.toString();
 
           if (isOwnMessage) {
-            // This is our own message coming back from server
             console.log("🔄 Received echo of own message from server");
 
-            // Try to resolve optimistic message
             const resolved = get().resolveOptimisticMessage(
               message.conversationId,
               message
             );
 
             if (!resolved) {
-              // No pending optimistic message found - might be from another session/tab
               console.log(
                 "ℹ️ No pending optimistic message - adding as new (from other session?)"
               );
               get().addMessage(message.conversationId, message);
             }
 
-            // Update conversation store with the final message
             useConversationStore
               .getState()
               .updateContactForOptimisticSend(message.conversationId, message);
           } else {
-            // Message from another user - add it
             console.log("➕ Adding message from other user");
             get().addMessage(message.conversationId, message);
 
@@ -247,8 +276,6 @@ export const useMessageStore = create(
               currentConversation === message.conversationId &&
               currentUser?._id
             ) {
-              // Use the REST API to mark messages as read instead of socket
-              // This ensures proper persistence
               setTimeout(() => {
                 fetch(
                   `/api/messages/${message.conversationId}?page=1&limit=50`,
@@ -262,7 +289,6 @@ export const useMessageStore = create(
                 ).catch((err) => console.log("Auto-mark read failed:", err));
               }, 100);
             } else {
-              // Increment unread count if not the current conversation
               useConversationStore
                 .getState()
                 .incrementUnreadCount(message.conversationId);
@@ -297,7 +323,6 @@ export const useMessageStore = create(
           const messages = get().messages[conversationId] || [];
           const currentUser = useAuthStore.getState().user;
 
-          // Don't update read receipts for own messages
           if (userId?.toString() === currentUser?._id?.toString()) {
             console.log("Ignoring read receipt from self");
             return;
@@ -309,25 +334,29 @@ export const useMessageStore = create(
                 (msg.senderId || msg.sender?._id)?.toString() ===
                 currentUser?._id?.toString();
 
-              // Only update read receipts for messages sent by current user
               if (isSentByMe && msg._id) {
-                const alreadyReadByReader = (msg.readBy || []).some(
+                const alreadyReadByReader = (
+                  msg.readReceipts ||
+                  msg.readBy ||
+                  []
+                ).some(
                   (r) =>
                     (r.user?._id || r.user)?.toString() === userId.toString()
                 );
 
                 if (!alreadyReadByReader) {
                   const readBy = [
-                    ...(msg.readBy || []),
+                    ...(msg.readReceipts || msg.readBy || []),
                     { user: userId, readAt: new Date().toISOString() },
                   ];
                   const newStatus = get().calculateMessageStatus(
-                    { ...msg, readBy },
+                    { ...msg, readReceipts: readBy, readBy },
                     currentUser?._id
                   );
                   return {
                     ...msg,
                     readBy,
+                    readReceipts: readBy,
                     status: newStatus,
                     deliveryStatus: newStatus,
                   };
@@ -386,19 +415,32 @@ export const useMessageStore = create(
             set((state) => ({
               messages: {
                 ...state.messages,
-                [conversationId]: state.messages[conversationId]?.map((msg) =>
-                  msg._id === messageId || msg.id === messageId
-                    ? {
-                        ...msg,
-                        content: "This message was deleted.",
-                        text: "This message was deleted.",
+                [conversationId]: state.messages[conversationId]?.map((msg) => {
+                  if (msg._id === messageId || msg.id === messageId) {
+                    return {
+                      ...msg,
+                      content: "This message was deleted.",
+                      text: "This message was deleted.",
+                      isDeleted: true,
+                      file: undefined,
+                      media: undefined,
+                      reactions: [],
+                    };
+                  }
+                  // Update reply references to this message
+                  if (msg.replyTo?._id === messageId) {
+                    return {
+                      ...msg,
+                      replyTo: {
+                        ...msg.replyTo,
+                        content: "This message was deleted",
                         isDeleted: true,
-                        file: undefined,
-                        media: undefined,
-                        reactions: [],
-                      }
-                    : msg
-                ),
+                        isAvailable: false,
+                      },
+                    };
+                  }
+                  return msg;
+                }),
               },
             }));
           }
@@ -419,25 +461,20 @@ export const useMessageStore = create(
         set({
           socketListenersInitialized: false,
           pendingOptimisticMessages: new Map(),
+          replyingTo: null,
         });
         console.log("🧹 Socket listeners cleaned up");
       },
 
       // ==================== OPTIMISTIC MESSAGE RESOLUTION ====================
 
-      /**
-       * Resolves an optimistic message when server confirmation arrives
-       * Returns true if resolved, false if no matching optimistic message found
-       */
       resolveOptimisticMessage: (conversationId, serverMessage) => {
         const state = get();
         const messages = state.messages[conversationId] || [];
         const currentUser = useAuthStore.getState().user;
 
-        // Find optimistic message by tempId from metadata first, then fallback to content matching
         let optimisticIndex = -1;
 
-        // First try to match by tempId from metadata
         if (serverMessage.metadata?.tempId) {
           optimisticIndex = messages.findIndex((msg) => {
             if (!msg.id?.startsWith("temp-")) return false;
@@ -448,28 +485,23 @@ export const useMessageStore = create(
           });
         }
 
-        // Fallback to content and timestamp matching
         if (optimisticIndex === -1) {
           optimisticIndex = messages.findIndex((msg) => {
-            // Must be a temp message
             if (!msg.id?.startsWith("temp-")) return false;
 
-            // Must be from current user
             const msgSenderId = msg.senderId || msg.sender?._id;
             if (msgSenderId?.toString() !== currentUser?._id?.toString())
               return false;
 
-            // Content must match
             if (msg.content !== serverMessage.content) return false;
 
-            // Timestamp should be within 30 seconds (increased tolerance)
             const msgTime = new Date(msg.time || msg.createdAt).getTime();
             const serverTime = new Date(
               serverMessage.createdAt || serverMessage.time
             ).getTime();
             const timeDiff = Math.abs(msgTime - serverTime);
 
-            return timeDiff < 30000; // 30 seconds tolerance
+            return timeDiff < 30000;
           });
         }
 
@@ -477,33 +509,28 @@ export const useMessageStore = create(
           console.log(
             "❌ No matching optimistic message found for server message"
           );
-          return false; // No matching optimistic message
+          return false;
         }
 
         console.log(
           `✅ Resolving optimistic message at index ${optimisticIndex}`
         );
 
-        // Replace optimistic message with server message
         set((state) => {
           const existingMessages = [...(state.messages[conversationId] || [])];
-          const optimisticMsg = existingMessages[optimisticIndex];
 
-          // Process server message with proper status calculation
           const processedServerMsg = processRawMessage(
             serverMessage,
             currentUser,
             get().calculateMessageStatus
           );
 
-          // Ensure proper message status based on readBy array
           let finalStatus = processedServerMsg.status;
           if (
-            processedServerMsg.readBy &&
-            processedServerMsg.readBy.length > 1
+            processedServerMsg.readReceipts &&
+            processedServerMsg.readReceipts.length > 1
           ) {
-            // If others have read it, mark as read
-            const othersRead = processedServerMsg.readBy.some(
+            const othersRead = processedServerMsg.readReceipts.some(
               (receipt) =>
                 (receipt.user?._id || receipt.user)?.toString() !==
                 currentUser?._id?.toString()
@@ -514,14 +541,12 @@ export const useMessageStore = create(
               finalStatus = "delivered";
             }
           } else if (
-            processedServerMsg.readBy &&
-            processedServerMsg.readBy.length === 1
+            processedServerMsg.readReceipts &&
+            processedServerMsg.readReceipts.length === 1
           ) {
-            // Only sender has read it
             finalStatus = "sent";
           }
 
-          // Replace at same position with updated status
           existingMessages[optimisticIndex] = {
             ...processedServerMsg,
             id: processedServerMsg._id?.toString() || processedServerMsg.id,
@@ -530,7 +555,6 @@ export const useMessageStore = create(
             deliveryStatus: finalStatus,
           };
 
-          // Sort by timestamp to ensure proper order
           existingMessages.sort((a, b) => new Date(a.time) - new Date(b.time));
 
           return {
@@ -556,14 +580,12 @@ export const useMessageStore = create(
           );
           if (!processedMessage) return state;
 
-          // Check if message already exists by permanent _id
           if (processedMessage._id) {
             const existsIndex = existingMessages.findIndex(
               (msg) => msg._id?.toString() === processedMessage._id.toString()
             );
 
             if (existsIndex >= 0) {
-              // Update existing message
               console.log(
                 `🔄 Updating existing message at index ${existsIndex}`
               );
@@ -586,7 +608,6 @@ export const useMessageStore = create(
             }
           }
 
-          // Add as new message
           console.log("➕ Adding new message");
           existingMessages.push(processedMessage);
           existingMessages.sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -642,7 +663,6 @@ export const useMessageStore = create(
 
           console.log("📨 API Response:", response.data);
 
-          // Handle pagination metadata
           const paginationInfo = {
             page: response.data.page || page,
             totalPages: response.data.totalPages || 1,
@@ -682,8 +702,6 @@ export const useMessageStore = create(
 
             let updatedMessages;
             if (append && page > 1) {
-              // APPEND mode: Add older messages to the beginning (for pagination)
-              // Filter out duplicates
               const existingIds = new Set(
                 existingMessages.map((m) => m._id?.toString() || m.id)
               );
@@ -691,12 +709,10 @@ export const useMessageStore = create(
                 (m) => !existingIds.has(m._id?.toString() || m.id)
               );
 
-              // Prepend older messages and sort
               updatedMessages = [...newMessages, ...existingMessages].sort(
                 (a, b) => new Date(a.time) - new Date(b.time)
               );
             } else {
-              // REPLACE mode: First load or refresh
               updatedMessages = validatedMessages;
             }
 
@@ -782,7 +798,10 @@ export const useMessageStore = create(
           else messageType = "file";
         }
 
-        // Create optimistic message
+        // Get replying message if exists
+        const replyingTo = get().replyingTo;
+
+        // Create optimistic message with reply data
         const tempMessage = {
           id: `temp-${tempMessageId}`,
           _id: undefined,
@@ -804,8 +823,23 @@ export const useMessageStore = create(
           status: "sending",
           deliveryStatus: "sending",
           readBy: [{ user: currentUser._id, readAt: new Date() }],
+          readReceipts: [{ user: currentUser._id, readAt: new Date() }],
           media,
-          metadata: { ...metadata, tempId: tempMessageId },
+          metadata: {
+            ...metadata,
+            tempId: tempMessageId,
+          },
+          replyTo: replyingTo
+            ? {
+                _id: replyingTo._id,
+                content: replyingTo.content,
+                type: replyingTo.type || replyingTo.messageType,
+                sender: replyingTo.sender,
+                file: replyingTo.file,
+                isDeleted: replyingTo.isDeleted,
+                isAvailable: !replyingTo.isDeleted,
+              }
+            : null,
           time: new Date().toISOString(),
           createdAt: new Date().toISOString(),
           timestamp: new Date().toISOString(),
@@ -822,7 +856,6 @@ export const useMessageStore = create(
           .updateContactForOptimisticSend(conversationId, tempMessage);
 
         try {
-          // ALWAYS USE REST API PATH - Remove socket path to prevent duplicates
           let requestData;
           let requestConfig = { headers: {} };
 
@@ -834,6 +867,7 @@ export const useMessageStore = create(
             formData.append("isForwarded", isForwarded.toString());
             formData.append("file", file);
             if (media) formData.append("media", JSON.stringify(media));
+            if (replyingTo) formData.append("replyTo", replyingTo._id); // NEW: Add replyTo
             formData.append(
               "metadata",
               JSON.stringify({ ...metadata, tempId: tempMessageId })
@@ -848,6 +882,7 @@ export const useMessageStore = create(
               type: messageType,
               isForwarded,
               media,
+              replyTo: replyingTo?._id || null, // NEW: Add replyTo
               metadata: { ...metadata, tempId: tempMessageId },
             };
             requestConfig.headers["Content-Type"] = "application/json";
@@ -864,7 +899,6 @@ export const useMessageStore = create(
 
           console.log("✅ API response received, resolving optimistic message");
 
-          // Try to resolve optimistic message, fallback to adding if not found
           const resolved = get().resolveOptimisticMessage(
             conversationId,
             serverMessage
@@ -872,6 +906,9 @@ export const useMessageStore = create(
           if (!resolved) {
             get().addMessage(conversationId, serverMessage);
           }
+
+          // Clear replying state after successful send
+          get().clearReplyingTo();
 
           return serverMessage;
         } catch (err) {
@@ -953,22 +990,40 @@ export const useMessageStore = create(
             set((state) => ({
               messages: {
                 ...state.messages,
-                [conversationId]: state.messages[conversationId]?.map((msg) =>
-                  msg._id === messageId || msg.id === messageId
-                    ? {
-                        ...msg,
-                        content: "This message was deleted.",
-                        text: "This message was deleted.",
+                [conversationId]: state.messages[conversationId]?.map((msg) => {
+                  // Update the deleted message
+                  if (msg._id === messageId || msg.id === messageId) {
+                    return {
+                      ...msg,
+                      content: "This message was deleted.",
+                      text: "This message was deleted.",
+                      isDeleted: true,
+                      file: undefined,
+                      media: undefined,
+                      reactions: [],
+                    };
+                  }
+                  // Update messages that replied to this message
+                  if (
+                    msg.replyTo?._id === messageId ||
+                    msg.replyTo?.id === messageId
+                  ) {
+                    return {
+                      ...msg,
+                      replyTo: {
+                        ...msg.replyTo,
+                        content: "This message was deleted",
                         isDeleted: true,
-                        file: undefined,
-                        media: undefined,
-                        reactions: [],
-                      }
-                    : msg
-                ),
+                        isAvailable: false,
+                      },
+                    };
+                  }
+                  return msg;
+                }),
               },
             }));
           } else {
+            // Delete for me - just remove from local state
             set((state) => ({
               messages: {
                 ...state.messages,
@@ -1001,7 +1056,7 @@ export const useMessageStore = create(
             const newReaction = {
               emoji,
               user: currentUser._id,
-              timestamp: new Date().toISOString(),
+              reactedAt: new Date().toISOString(),
             };
 
             return {
@@ -1163,18 +1218,25 @@ export const useMessageStore = create(
         await get().fetchMessages(conversationId, nextPage, 50, true);
       },
 
-      // NEW: Check if more messages are available
       hasMoreMessages: (conversationId) => {
         const pagination = get().messagePagination[conversationId];
         return pagination?.hasMore || false;
       },
 
-      // NEW: Get current page info
       getMessagePagination: (conversationId) => {
         return get().messagePagination[conversationId] || null;
       },
 
-      // MODIFIED: Clear message state to also clear pagination
+      // NEW: Get message by ID from any conversation
+      getMessageById: (messageId, conversationId) => {
+        const messages = get().messages[conversationId] || [];
+        return messages.find(
+          (msg) =>
+            msg._id?.toString() === messageId?.toString() ||
+            msg.id === messageId
+        );
+      },
+
       clearMessageState: () => {
         get().cleanupSocketListeners();
         set({
@@ -1183,11 +1245,11 @@ export const useMessageStore = create(
           error: null,
           socketListenersInitialized: false,
           pendingOptimisticMessages: new Map(),
-          messagePagination: {}, // Clear pagination data
+          messagePagination: {},
+          replyingTo: null,
         });
       },
 
-      // Debug function to check message state
       debugMessageState: () => {
         const state = get();
         console.log("🔍 Message Store Debug:", {
@@ -1196,6 +1258,7 @@ export const useMessageStore = create(
           loadingMessages: state.loadingMessages,
           error: state.error,
           socketListenersInitialized: state.socketListenersInitialized,
+          replyingTo: state.replyingTo,
         });
         Object.keys(state.messages).forEach((convId) => {
           console.log(
@@ -1206,7 +1269,6 @@ export const useMessageStore = create(
         });
       },
 
-      // Initialize store on app load
       initializeStore: () => {
         console.log("🚀 Initializing message store...");
         const state = get();
@@ -1216,7 +1278,6 @@ export const useMessageStore = create(
           "conversations"
         );
 
-        // Initialize socket listeners if we have messages
         if (
           Object.keys(state.messages).length > 0 &&
           !state.socketListenersInitialized
@@ -1230,7 +1291,7 @@ export const useMessageStore = create(
       name: "message-store",
       partialize: (state) => ({
         messages: state.messages,
-        // Don't persist pagination, loading states, errors, or socket listeners
+        messagePagination: state.messagePagination,
       }),
     }
   )
