@@ -62,8 +62,25 @@ export const useContactsStore = create((set, get) => ({
   fetchAllUsers: async () => {
     try {
       const data = await contactService.getAllContacts();
-      if (data.success) {
-        set({ allUsers: data.data.users, error: null });
+
+      // Log to help debug response shape (remove in production)
+      console.log("fetchAllUsers response:", data);
+
+      // support multiple possible shapes:
+      // { contacts: [...] }
+      // { success: true, data: { contacts: [...] } }
+      // direct array (unlikely) -> [...]
+      const contacts =
+        (data && data.contacts) ||
+        (data && data.data && data.data.contacts) ||
+        (Array.isArray(data) ? data : null);
+
+      if (Array.isArray(contacts)) {
+        set({ allUsers: contacts, error: null });
+      } else {
+        // fallback: empty array and store the raw response for debugging
+        console.warn("Unexpected getAllContacts response shape", data);
+        set({ allUsers: [], error: "Unexpected response format" });
       }
     } catch (error) {
       console.error("Failed to fetch all users:", error);

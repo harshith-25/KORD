@@ -1,5 +1,4 @@
-import React from 'react';
-import { Info, ChevronsRight } from 'lucide-react';
+import { ChevronsRight } from 'lucide-react';
 
 const AboutSettings = () => (
   <div className="h-full overflow-y-auto">

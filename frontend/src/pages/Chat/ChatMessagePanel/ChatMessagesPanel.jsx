@@ -39,6 +39,7 @@ function ChatMessagesPanel({
 	const [isLoadingMore, setIsLoadingMore] = useState(false);
 	const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
 	const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+	const [isSearchingMessage, setIsSearchingMessage] = useState(false);
 
 	// Message actions state
 	const [forwardingMessage, setForwardingMessage] = useState(null);
@@ -58,9 +59,10 @@ function ChatMessagesPanel({
 		loadMoreMessages,
 		hasMoreMessages,
 		getMessagePagination,
-		setReplyingTo, // NEW: From updated store
-		clearReplyingTo, // NEW: From updated store
-		getMessageById // NEW: From updated store
+		setReplyingTo,
+		clearReplyingTo,
+		getMessageById,
+		getMessageByIdWithLoad,
 	} = useMessageStore();
 	const { dmContacts, fetchDmContacts } = useContactsStore();
 
@@ -133,28 +135,97 @@ function ChatMessagesPanel({
 		return () => container.removeEventListener('scroll', handleScrollForLoadMore);
 	}, [hasMore, messagesContainerRef]);
 
-	// NEW: Scroll to specific message with highlight (for reply navigation)
-	const scrollToMessage = useCallback((messageId) => {
+	// NEW: Enhanced scroll to message with automatic loading
+	const scrollToMessage = useCallback(async (messageId) => {
+		if (!messageId || !conversationId) {
+			toast.error('Invalid message reference');
+			return;
+		}
+
+		console.log(`🎯 Attempting to scroll to message: ${messageId}`);
+
+		// First check if message is already in DOM
 		const messageElement = messageRefs.current[messageId];
 		if (messageElement) {
+			console.log('✅ Message found in DOM, scrolling...');
 			messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-			// Highlight the message temporarily
+			// Highlight the message
 			setHighlightedMessageId(messageId);
 			setTimeout(() => {
 				setHighlightedMessageId(null);
-			}, 2000); // Remove highlight after 2 seconds
-		} else {
-			// Message might not be loaded yet, try to find it
-			const message = getMessageById(messageId, conversationId);
-			if (!message) {
-				toast.info('Message not found in current view');
-			} else {
-				// Scroll to top to load older messages
-				toast.info('Scroll up to load older messages');
-			}
+			}, 3000); // 3 seconds as requested
+			return;
 		}
-	}, [conversationId, getMessageById]);
+
+		// Message not in DOM - check if it exists in loaded messages
+		const message = getMessageById(messageId, conversationId);
+		if (message) {
+			console.log('⚠️ Message loaded but not in DOM yet, waiting...');
+			// Message is loaded but DOM not updated yet, wait a bit
+			setTimeout(() => {
+				const element = messageRefs.current[messageId];
+				if (element) {
+					element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+					setHighlightedMessageId(messageId);
+					setTimeout(() => setHighlightedMessageId(null), 3000);
+				} else {
+					toast.info('Message not visible. Scroll up to load older messages.');
+				}
+			}, 300);
+			return;
+		}
+
+		// Message not loaded - need to load more pages
+		console.log('📜 Message not loaded, attempting to load pages...');
+		setIsSearchingMessage(true);
+
+		const loadingToast = toast.loading('Searching for message...');
+
+		try {
+			const result = await getMessageByIdWithLoad(conversationId, messageId);
+
+			toast.dismiss(loadingToast);
+
+			if (result.found) {
+				console.log('✅ Message found after loading pages');
+				toast.success('Message found!');
+
+				// Wait for DOM to update
+				setTimeout(() => {
+					const element = messageRefs.current[messageId];
+					if (element) {
+						element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+						setHighlightedMessageId(messageId);
+						setTimeout(() => setHighlightedMessageId(null), 3000);
+					} else {
+						// One more retry after a longer delay
+						setTimeout(() => {
+							const retryElement = messageRefs.current[messageId];
+							if (retryElement) {
+								retryElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+								setHighlightedMessageId(messageId);
+								setTimeout(() => setHighlightedMessageId(null), 3000);
+							}
+						}, 500);
+					}
+				}, 300);
+			} else {
+				console.log('❌ Message not found after loading all available pages');
+				if (result.error) {
+					toast.error('Error loading messages');
+				} else {
+					toast.info('Original message not found in this conversation');
+				}
+			}
+		} catch (error) {
+			console.error('Error searching for message:', error);
+			toast.dismiss(loadingToast);
+			toast.error('Failed to load message');
+		} finally {
+			setIsSearchingMessage(false);
+		}
+	}, [conversationId, getMessageById, getMessageByIdWithLoad]);
 
 	// NEW: Enhanced reply handler - integrates with store
 	const handleReply = useCallback((message) => {
@@ -399,6 +470,16 @@ function ChatMessagesPanel({
 							{isLoadingMore && !showLoadMoreButton && (
 								<div className="flex justify-center py-2">
 									<Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+								</div>
+							)}
+
+							{/* Loading indicator when searching for a message */}
+							{isSearchingMessage && (
+								<div className="flex justify-center py-2">
+									<div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-full flex items-center gap-2">
+										<Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+										<span className="text-sm text-blue-600 dark:text-blue-400">Searching for message...</span>
+									</div>
 								</div>
 							)}
 

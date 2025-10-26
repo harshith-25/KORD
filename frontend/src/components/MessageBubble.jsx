@@ -35,12 +35,9 @@ function MessageBubble({
 	const isEdited = message.isEdited || false;
 	const messageId = message._id || message.id;
 
-	// Check if message has a reply - Updated to match new structure
-	const replyTo = message.metadata?.replyTo || message.replyTo;
+	// Check if message has a reply - Handle both metadata.replyTo and direct replyTo
+	const replyTo = message.replyTo;
 	const hasReply = !!replyTo;
-
-	// Quick reactions
-	const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
 	// Close menu when clicking outside
 	useEffect(() => {
@@ -143,12 +140,64 @@ function MessageBubble({
 	// Handle reply click - scroll to original message
 	const handleReplyClick = () => {
 		if (replyTo?.messageId && onScrollToReply) {
+			console.log('🔗 Clicking reply, navigating to message:', replyTo.messageId);
 			onScrollToReply(replyTo.messageId);
+		} else if (replyTo?._id && onScrollToReply) {
+			console.log('🔗 Clicking reply, navigating to message:', replyTo._id);
+			onScrollToReply(replyTo._id);
+		} else {
+			console.warn('⚠️ Reply click failed - no messageId or _id found', replyTo);
 		}
 	};
 
 	// Determine if the replied message was deleted
 	const isRepliedMessageDeleted = replyTo?.isDeleted || false;
+
+	// Get sender name for reply preview
+	const getReplySenderName = () => {
+		if (!replyTo) return 'Replying to User';
+
+		// Check if the replied-to message was sent by current user
+		const repliedMessageSenderId = (replyTo.senderId || replyTo.sender?._id)?.toString();
+		const isRepliedToMyMessage = repliedMessageSenderId === currentUser?._id?.toString();
+
+		// If I sent this reply (I'm the one replying)
+		if (isSentByMe) {
+			// If I'm replying to my own message
+			if (isRepliedToMyMessage) {
+				return 'Replying to yourself';
+			}
+			// If I'm replying to someone else's message - show their name
+			// Fall through to name logic below
+		} else {
+			// If someone else sent this reply, always show who they replied to
+			// If they replied to me, show "You"
+			if (isRepliedToMyMessage) {
+				return 'Replying to You';
+			}
+			// Otherwise show the original sender's name - fall through
+		}
+
+		// Get the actual sender's name for "replying to [their name]" cases
+		let senderName = 'User';
+
+		// Check for senderName field first (from backend)
+		if (replyTo.senderName) {
+			senderName = replyTo.senderName.trim() || 'User';
+		}
+		// Fallback to constructing from sender object
+		else if (replyTo.sender) {
+			if (replyTo.sender.firstName) {
+				senderName = `${replyTo.sender.firstName} ${replyTo.sender.lastName || ''}`.trim();
+			} else if (replyTo.sender.name) {
+				senderName = replyTo.sender.name;
+			} else if (replyTo.sender.username) {
+				senderName = replyTo.sender.username;
+			}
+		}
+
+		return `Replying to ${senderName}`;
+	};
 
 	return (
 		<div
@@ -253,7 +302,7 @@ function MessageBubble({
 							: 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md border border-gray-200 dark:border-gray-700'
 						}
 						${isBeingEdited ? 'ring-2 ring-amber-400 ring-offset-2' : ''}
-						${isHighlighted ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
+						${isHighlighted ? 'ring-2 ring-blue-500 ring-offset-2 animate-pulse' : ''}
 						${status === 'failed' ? 'opacity-70' : ''}
 					`}
 				>
@@ -270,7 +319,7 @@ function MessageBubble({
 								<Reply className={`w-3 h-3 ${isSentByMe ? 'text-white/90' : 'text-green-500 dark:text-green-400'}`} />
 								<p className={`text-xs font-semibold ${isSentByMe ? 'text-white/90' : 'text-green-600 dark:text-green-400'
 									}`}>
-									{replyTo.senderName || 'User'}
+									{getReplySenderName()}
 								</p>
 							</div>
 							{isRepliedMessageDeleted ? (
@@ -299,13 +348,13 @@ function MessageBubble({
 							{/* Media attachments */}
 							{message.file && (
 								<div className="mb-2">
-									{message.file.fileType?.startsWith('image') ? (
+									{message.file.fileType?.startsWith('image') || message.file.fileMimeType?.startsWith('image') ? (
 										<img
 											src={message.file.filePath}
 											alt="Attachment"
 											className="rounded-lg max-w-full h-auto max-h-80 object-cover"
 										/>
-									) : message.file.fileType?.startsWith('video') ? (
+									) : message.file.fileType?.startsWith('video') || message.file.fileMimeType?.startsWith('video') ? (
 										<video
 											src={message.file.filePath}
 											controls
@@ -325,9 +374,11 @@ function MessageBubble({
 							)}
 
 							{/* Text content */}
-							<p className="text-sm whitespace-pre-wrap break-words">
-								{message.content || message.text}
-							</p>
+							{(message.content || message.text) && (
+								<p className="text-sm whitespace-pre-wrap break-words">
+									{message.content || message.text}
+								</p>
+							)}
 						</>
 					)}
 
@@ -348,7 +399,7 @@ function MessageBubble({
 
 					{/* Reactions display */}
 					{message.reactions && message.reactions.length > 0 && (
-						<div className="absolute -bottom-2 right-2 flex gap-1">
+						<div className="absolute -bottom-3 right-2 flex gap-1">
 							{Object.entries(
 								message.reactions.reduce((acc, r) => {
 									acc[r.emoji] = (acc[r.emoji] || 0) + 1;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import api from '@/utils/axiosInstance';
 import { GET_USER_PROFILE_ROUTE } from '@/utils/ApiRoutes';

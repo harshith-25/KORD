@@ -16,7 +16,10 @@ const sendErrorResponse = (
 
 // Generate JWT Token
 const generateToken = (id) => {
-  console.log("🔐 JWT_SECRET when creating token:", JSON.stringify(process.env.JWT_SECRET));
+  console.log(
+    "🔐 JWT_SECRET when creating token:",
+    JSON.stringify(process.env.JWT_SECRET)
+  );
   return jwt.sign({ id: id }, process.env.JWT_SECRET.trim(), {
     expiresIn: "30d",
   });
@@ -227,14 +230,13 @@ export const getUserProfile = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const user = await User.findById(userId).select("-password"); // Exclude sensitive info
-    if (!user) {
-      return res.status(404).send("User not found.");
+    // Validate ObjectId early
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Invalid userId parameter" });
     }
 
-    // You might want to implement privacy settings here
-    // e.g., if user.settings.privacy.profileVisibility is 'contacts' and req.userId is not a contact
-    // then return limited info or a permission error.
+    const user = await User.findById(userId).select("-password");
+    if (!user) return res.status(404).send("User not found.");
 
     return res.status(200).json(user);
   } catch (error) {

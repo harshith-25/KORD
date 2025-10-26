@@ -1,12 +1,11 @@
 import { useState, useCallback } from 'react';
-import {
-	Check, CheckCheck, Clock, Mic, Image, FileText, Video, MapPin,
-	Archive, MessageCircleMore, Pin, Star, VolumeX, Trash2, ExternalLink, X
-} from 'lucide-react';
+import { Check, CheckCheck, Clock, Mic, Image, FileText, Video, MapPin, Archive, MessageCircleMore, Pin, Star, VolumeX, Trash2, ExternalLink, X } from 'lucide-react';
 import { isToday, isYesterday, isThisWeek } from 'date-fns';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
+import Avatar from '@/components/Avatar';
+import { UsersIcon } from '@heroicons/react/24/outline';
 
 const formatTime = (date) => {
 	return date.toLocaleTimeString('en-US', {
@@ -158,10 +157,6 @@ const ChatItem = ({
 		}
 	}, []);
 
-	const getAvatarFallback = useCallback((name) => {
-		return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
-	}, []);
-
 	// Handle pop-out toggle with smart selection logic
 	const handlePopOutToggle = useCallback(() => {
 		const chatId = chat.conversationId;
@@ -245,48 +240,32 @@ const ChatItem = ({
 								</div>
 							)}
 
-							{/* Avatar with online indicator */}
-							<div className="relative flex-shrink-0">
+							{/* Avatar with ring and styling */}
+							<div className={`
+								relative flex-shrink-0 transition-all duration-300
+								${isSelectedChat || isSelected
+									? 'ring-2 ring-blue-300 dark:ring-blue-500/60 rounded-full shadow-lg shadow-blue-500/25'
+									: 'ring-2 ring-gray-200 dark:ring-slate-700 rounded-full group-hover:ring-gray-300 dark:group-hover:ring-slate-600'
+								}`}>
 								{isDirect ? (
-									<>
-										<div className={`
-                      h-12 w-12 rounded-full overflow-hidden ring-2 transition-all duration-300
-                      ${isSelectedChat || isSelected
-												? 'ring-blue-300 dark:ring-blue-500/60 shadow-lg shadow-blue-500/25'
-												: 'ring-gray-200 dark:ring-slate-700 group-hover:ring-gray-300 dark:group-hover:ring-slate-600'
-											}`}>
-											{chatAvatar ? (
-												<img
-													src={chatAvatar}
-													alt={chatName}
-													className="w-full h-full object-cover"
-													onError={(e) => {
-														e.target.style.display = 'none';
-														e.target.nextSibling.style.display = 'flex';
-													}}
-												/>
-											) : null}
-											<div
-												className={`w-full h-full ${chatAvatar ? 'hidden' : 'flex'} items-center justify-center text-white font-semibold text-sm bg-gradient-to-br from-gray-500 to-gray-600 dark:from-slate-600 dark:to-slate-700`}
-											>
-												{getAvatarFallback(chatName)}
-											</div>
-										</div>
-										{isOnlineStatus && (
-											<div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-gray-900 shadow-lg">
-												<div className="w-full h-full bg-emerald-400 rounded-full animate-pulse" />
-											</div>
-										)}
-									</>
+									<Avatar
+										src={chatAvatar}
+										name={chatName}
+										id={chat.conversationId}
+										size="md"
+										showOnline={true}
+										isOnline={isOnlineStatus}
+										className="w-12 h-12"
+									/>
 								) : (
 									<div className={`
-                    h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold
-                    transition-all duration-300 shadow-lg
-                    ${isSelectedChat || isSelected
+										h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold
+										transition-all duration-300 shadow-lg
+										${isSelectedChat || isSelected
 											? 'bg-gradient-to-br from-indigo-100 to-blue-100 dark:from-indigo-800/60 dark:to-blue-800/60 border-2 border-blue-300 dark:border-blue-600/60 text-indigo-700 dark:text-blue-300'
 											: 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-700 dark:to-slate-800 border-2 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 group-hover:border-gray-300 dark:group-hover:border-slate-500 group-hover:from-gray-200 group-hover:to-gray-300 dark:group-hover:from-slate-600 dark:group-hover:to-slate-700'
 										}`}>
-										#
+										<UsersIcon className="h-6 w-6" />
 									</div>
 								)}
 							</div>

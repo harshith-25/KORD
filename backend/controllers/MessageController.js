@@ -14,22 +14,41 @@ const formatReplyData = (repliedMsg, currentUserId) => {
     (id) => id.toString() === currentUserId.toString()
   );
 
+  // Get sender name - handle different name formats
+  let senderName = "Unknown User";
+  if (repliedMsg.sender) {
+    if (repliedMsg.sender.firstName) {
+      senderName = `${repliedMsg.sender.firstName} ${repliedMsg.sender.lastName || ""
+        }`.trim();
+    } else if (repliedMsg.sender.name) {
+      senderName = repliedMsg.sender.name;
+    } else if (repliedMsg.sender.username) {
+      senderName = repliedMsg.sender.username;
+    }
+  }
+
+  const baseReply = {
+    messageId: repliedMsg._id,
+    _id: repliedMsg._id,
+    type: repliedMsg.type,
+    sender: repliedMsg.sender,
+    senderName,
+    createdAt: repliedMsg.createdAt,
+    isAvailable: true,
+  };
+
   if (repliedMsg.isDeleted || isDeletedForUser) {
     return {
-      _id: repliedMsg._id,
+      ...baseReply,
       content: "This message was deleted",
-      type: repliedMsg.type,
-      sender: repliedMsg.sender,
       isDeleted: true,
       isAvailable: false,
     };
   }
 
   return {
-    _id: repliedMsg._id,
+    ...baseReply,
     content: repliedMsg.content,
-    type: repliedMsg.type,
-    sender: repliedMsg.sender,
     file: repliedMsg.file
       ? {
         fileName: repliedMsg.file.fileName,
@@ -38,7 +57,6 @@ const formatReplyData = (repliedMsg, currentUserId) => {
       }
       : undefined,
     isDeleted: false,
-    isAvailable: true,
   };
 };
 
@@ -346,6 +364,15 @@ export const getMessages = asyncHandler(async (req, res) => {
     includeDeleted: false,
   });
 
+  const formattedMessages = messages.map((msg) => {
+    if (msg.replyTo) {
+      const plainMsg = msg.toObject ? msg.toObject() : msg;
+      plainMsg.replyTo = formatReplyData(msg.replyTo, currentUserId);
+      return plainMsg;
+    }
+    return msg;
+  });
+
   // Mark messages as read - only for messages from other users
   const messagesToMarkRead = messages.filter((msg) => {
     // Skip messages sent by the current user
@@ -423,8 +450,8 @@ export const getMessages = asyncHandler(async (req, res) => {
 
   // Return messages with pagination-like structure for frontend compatibility
   res.status(200).json({
-    docs: messages,
-    totalDocs: messages.length,
+    docs: formattedMessages, // Changed from messages
+    totalDocs: formattedMessages.length,
     limit: parseInt(limit, 10),
     page: parseInt(page, 10),
     totalPages: Math.ceil(messages.length / parseInt(limit, 10)),

@@ -25,7 +25,7 @@ const readReceiptSchema = mongoose.Schema(
       required: true,
     },
     readAt: { type: Date, default: Date.now },
-    deviceInfo: { type: String }, // Optional: track which device read it
+    deviceInfo: { type: String },
   },
   { _id: false }
 );
@@ -385,11 +385,13 @@ messageSchema.statics.findConversationMessages = async function (
         isDeleted: 1,
         deletedFor: 1,
         reactions: 1,
+        // Find this section in the $project stage (around line 350-420)
         replyTo: {
           $cond: {
             if: { $ifNull: ["$replyToDetails._id", false] },
             then: {
               _id: "$replyToDetails._id",
+              messageId: "$replyToDetails._id", // ADD THIS LINE
               content: {
                 $cond: {
                   if: { $eq: ["$replyToDetails.isDeleted", true] },
@@ -443,6 +445,31 @@ messageSchema.statics.findConversationMessages = async function (
                   },
                 },
               },
+              senderName: {
+                // ADD THIS ENTIRE BLOCK
+                $cond: {
+                  if: { $ifNull: ["$replyToSenderDetails._id", false] },
+                  then: {
+                    $concat: [
+                      { $ifNull: ["$replyToSenderDetails.firstName", ""] },
+                      " ",
+                      { $ifNull: ["$replyToSenderDetails.lastName", ""] },
+                    ],
+                  },
+                  else: {
+                    $ifNull: [
+                      "$replyToSenderDetails.name",
+                      {
+                        $ifNull: [
+                          "$replyToSenderDetails.username",
+                          "Unknown User",
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+              createdAt: "$replyToDetails.createdAt", // ADD THIS LINE
               isDeleted: {
                 $or: [
                   { $eq: ["$replyToDetails.isDeleted", true] },

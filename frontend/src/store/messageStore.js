@@ -632,10 +632,6 @@ export const useMessageStore = create(
       ) => {
         const { isAuthenticated } = useChatStore.getState();
 
-        console.log(
-          `🔄 Fetching messages for conversation: ${conversationId}, page: ${page}`
-        );
-
         if (!isAuthenticated() || !conversationId) {
           console.error("❌ Cannot fetch messages:", {
             isAuthenticated: isAuthenticated(),
@@ -648,20 +644,12 @@ export const useMessageStore = create(
         set({ loadingMessages: true, error: null });
 
         try {
-          console.log(
-            `📡 Making API request to: ${GET_ALL_MESSAGES_ROUTE(
-              conversationId
-            )}`
-          );
-
           const response = await api.get(
             GET_ALL_MESSAGES_ROUTE(conversationId),
             {
               params: { page, limit },
             }
           );
-
-          console.log("📨 API Response:", response.data);
 
           const paginationInfo = {
             page: response.data.page || page,
@@ -684,18 +672,12 @@ export const useMessageStore = create(
             messagesArray = [messagesArray].filter(Boolean);
           }
 
-          console.log(`📝 Processing ${messagesArray.length} messages`);
-
           const currentUser = useAuthStore.getState().user;
           const getMessageStatus = get().calculateMessageStatus;
 
           const validatedMessages = messagesArray
             .map((msg) => processRawMessage(msg, currentUser, getMessageStatus))
             .filter((msg) => msg !== null);
-
-          console.log(
-            `✅ Successfully processed ${validatedMessages.length} messages`
-          );
 
           set((state) => {
             const existingMessages = state.messages[conversationId] || [];
@@ -1237,6 +1219,81 @@ export const useMessageStore = create(
         );
       },
 
+      loadMessagesUntilFound: async (
+        conversationId,
+        targetMessageId,
+        maxAttempts = 10
+      ) => {
+        const state = get();
+        let attempts = 0;
+
+        console.log(
+          `🔍 Searching for message ${targetMessageId} in conversation ${conversationId}`
+        );
+
+        // First check if message is already loaded
+        let message = get().getMessageById(targetMessageId, conversationId);
+        if (message) {
+          console.log("✅ Message already loaded");
+          return { found: true, message };
+        }
+
+        // Keep loading pages until we find it or reach max attempts
+        while (attempts < maxAttempts) {
+          const pagination = state.messagePagination[conversationId];
+
+          // Check if we have more pages to load
+          if (!pagination?.hasMore) {
+            console.log("❌ No more pages to load, message not found");
+            return { found: false, message: null };
+          }
+
+          console.log(
+            `📜 Loading page ${pagination.page + 1} (attempt ${
+              attempts + 1
+            }/${maxAttempts})`
+          );
+
+          try {
+            await get().loadMoreMessages(conversationId);
+
+            // Check again after loading
+            message = get().getMessageById(targetMessageId, conversationId);
+            if (message) {
+              console.log(
+                `✅ Message found after loading page ${pagination.page}`
+              );
+              return { found: true, message };
+            }
+
+            attempts++;
+          } catch (error) {
+            console.error("Error loading messages:", error);
+            return { found: false, message: null, error };
+          }
+        }
+
+        console.log(`❌ Message not found after ${maxAttempts} attempts`);
+        return { found: false, message: null };
+      },
+
+      // NEW: Enhanced getMessageById that can load more pages if needed
+      getMessageByIdWithLoad: async (conversationId, messageId) => {
+        // First try to find in current messages
+        let message = get().getMessageById(messageId, conversationId);
+
+        if (message) {
+          return { found: true, message, alreadyLoaded: true };
+        }
+
+        // If not found, try loading more pages
+        const result = await get().loadMessagesUntilFound(
+          conversationId,
+          messageId
+        );
+        return { ...result, alreadyLoaded: false };
+      },
+
       clearMessageState: () => {
         get().cleanupSocketListeners();
         set({
@@ -1270,19 +1327,12 @@ export const useMessageStore = create(
       },
 
       initializeStore: () => {
-        console.log("🚀 Initializing message store...");
         const state = get();
-        console.log(
-          "📦 Loaded messages from localStorage:",
-          Object.keys(state.messages).length,
-          "conversations"
-        );
 
         if (
           Object.keys(state.messages).length > 0 &&
           !state.socketListenersInitialized
         ) {
-          console.log("🔌 Initializing socket listeners for existing messages");
           get().initializeSocketListeners();
         }
       },

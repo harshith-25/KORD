@@ -57,7 +57,11 @@ const ChatListPanel = ({
 			}
 		}
 
-		return chat.name || `Group ${chat.memberCount || 0}`;
+		if (chat.type === 'group') {
+			return `${chat.name || `Group ${chat.memberCount || 0}`}`;
+		}
+
+		return chat.name || 'Unnamed Chat';
 	}, [currentUser]);
 
 	const getLastMessageContent = useCallback((chat) => {

@@ -99,17 +99,17 @@ export const getInitials = (name) => {
     .slice(0, 2);
 };
 
-// /**
-//  * Check if a chat is a group or channel
-//  * @param {Object} chat - Chat object
-//  * @returns {boolean} True if it's a group or channel
-//  */
-// export const isGroupOrChannel = (chat) => {
-//   if (!chat) return false;
-//   return (
-//     chat.type === "group" || chat.type === "channel" || chat.isGroup === true
-//   );
-// };
+/**
+ * Check if a chat is a group or channel
+ * @param {Object} chat - Chat object
+ * @returns {boolean} True if it's a group or channel
+ */
+export const isGroupOrChannel = (chat) => {
+  if (!chat) return false;
+  return (
+    chat.type === "group" || chat.type === "channel" || chat.isGroup === true
+  );
+};
 
 // /**
 //  * Get user display name for messages
@@ -127,7 +127,7 @@ export const getMessageDisplayName = (message, chat, contacts) => {
 
   // Find sender info
   const sender = contacts?.find((contact) => contact.id === message.senderId);
-  return sender?.name || message.senderName || "Unknown User";
+  return `${message.sender.firstName} ${message.sender.lastName}` || sender?.name || "Unknown User";
 };
 
 // /**

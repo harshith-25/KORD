@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useChatStore } from './store/chatStore';
 import { useAuthStore } from './store/authStore';
 import ChatList from './components/ChatList';
-import ChatWindow from './components/ChatWindow';
 import MessageInput from './components/MessageInput';
 import NewChatModal from './components/NewChatModal';
 import { Loader2, Plus, LogOut, Settings, User, MessageCircle, XCircle } from 'lucide-react'; // Ensure XCircle is imported
@@ -168,9 +167,6 @@ const ChatPage = ({ onSettingsOpen }) => {
 							{/* Add online status if available in selectedChat */}
 							{/* <span className="ml-2 text-sm text-green-500">Online</span> */}
 						</div>
-
-						{/* Chat Window */}
-						<ChatWindow conversationId={selectedChatId} />
 
 						{/* Message Input */}
 						<MessageInput conversationId={selectedChatId} />

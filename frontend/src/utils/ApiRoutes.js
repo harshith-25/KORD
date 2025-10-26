@@ -34,7 +34,7 @@ export const GET_DM_CONTACTS_ROUTE = `${USERS_ROUTES}/contacts/dm-list`; // ✅ 
 export const GET_ALL_CONTACTS_ROUTE = `${USERS_ROUTES}/all-contacts`; // ✅ Matches backend
 
 // --- NEW ROUTE FOR DM INITIATION ---
-export const INITIATE_DM_ROUTE = `${USERS_ROUTES}/initiate-dm`; // Matches new route in userRoutes.js
+// export const INITIATE_DM_ROUTE = `${USERS_ROUTES}/initiate-dm`; // Matches new route in userRoutes.js
 
 // --- Message Routes ---
 export const MESSAGE_ROUTES = "/api/messages";
@@ -63,6 +63,7 @@ export const LEAVE_CHANNEL_ROUTE = `${CHANNEL_ROUTES}/leave`; // Append channelI
 // --- Conversation Routes ---
 export const CONVERSATION_ROUTES = "/api/conversations";
 export const CREATE_DIRECT_CONVERSATION = `${CONVERSATION_ROUTES}/direct`;
+export const CREATE_GROUP_OR_CHANNEL = `${CONVERSATION_ROUTES}/`;
 
 // --- Notification Routes ---
 export const NOTIFICATION_ROUTES = "/api/notifications";

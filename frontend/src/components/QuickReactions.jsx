@@ -62,22 +62,28 @@ const QuickReactions = memo(({
 		setPickerPosition({ top, left });
 	};
 
+	// Update the useEffect around line 60-75:
 	useEffect(() => {
 		const handleClickOutside = (event) => {
-			if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+			if (
+				emojiPickerRef.current &&
+				!emojiPickerRef.current.contains(event.target) &&
+				triggerRef.current &&
+				!triggerRef.current.contains(event.target)
+			) {
 				setShowEmojiPicker(false);
 				onClose?.();
 			}
 		};
 
-		if (showEmojiPicker) {
+		if (showEmojiPicker || pickerOnly) {
 			document.addEventListener('mousedown', handleClickOutside);
 		}
 
 		return () => {
 			document.removeEventListener('mousedown', handleClickOutside);
 		};
-	}, [showEmojiPicker, onClose]);
+	}, [showEmojiPicker, pickerOnly, onClose]);
 
 	// Recalculate position when emoji picker opens or window resizes
 	useEffect(() => {
@@ -132,30 +138,50 @@ const QuickReactions = memo(({
 
 	// If pickerOnly mode, just show the quick reactions and emoji picker
 	if (pickerOnly) {
+		const currentUserReactionCount = message.reactions?.filter(
+			r => (r.user?._id === currentUser._id || r.user === currentUser._id)
+		).length || 0;
+
+		const canAddMoreReactions = currentUserReactionCount < 5;
+
 		return (
 			<>
 				<div
 					ref={triggerRef}
-					className={`absolute ${isCurrentUserMessage ? 'right-0' : 'left-0'} bottom-full mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-2 flex gap-1 z-10`}
+					className={`absolute ${isCurrentUserMessage ? 'right-0' : 'left-0'} bottom-full mb-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 p-2 flex gap-1 z-10`}
 				>
-					{QUICK_REACTIONS.map((emoji) => (
+					{QUICK_REACTIONS.map((emoji) => {
+						const hasReacted = message.reactions?.some(
+							r => r.emoji === emoji && (r.user?._id === currentUser._id || r.user === currentUser._id)
+						);
+						const isDisabled = !hasReacted && !canAddMoreReactions;
+
+						return (
+							<button
+								key={emoji}
+								onClick={() => {
+									if (!isDisabled) {
+										handleQuickReaction(emoji);
+									}
+								}}
+								disabled={isDisabled}
+								className={`p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${isDisabled ? 'opacity-40 cursor-not-allowed' : ''
+									}`}
+								title={isDisabled ? 'Maximum 5 reactions reached' : ''}
+							>
+								<span className="text-lg">{emoji}</span>
+							</button>
+						);
+					})}
+					{canAddMoreReactions && (
 						<button
-							key={emoji}
-							onClick={() => {
-								handleQuickReaction(emoji);
-							}}
-							className={`p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}
+							onClick={() => setShowEmojiPicker(true)}
+							className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+							title="More reactions"
 						>
-							<span className="text-lg">{emoji}</span>
+							<Plus className="h-5 w-5 text-gray-500" />
 						</button>
-					))}
-					<button
-						onClick={() => setShowEmojiPicker(true)}
-						className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-						title="More reactions"
-					>
-						<Plus className="h-5 w-5 text-gray-500" />
-					</button>
+					)}
 				</div>
 
 				{showEmojiPicker && (
@@ -169,8 +195,11 @@ const QuickReactions = memo(({
 					>
 						<EmojiPicker
 							onEmojiClick={(emojiData) => {
-								handleQuickReaction(emojiData.emoji);
-								setShowEmojiPicker(false);
+								if (canAddMoreReactions) {
+									handleQuickReaction(emojiData.emoji);
+									setShowEmojiPicker(false);
+									onClose?.();
+								}
 							}}
 							theme="auto"
 							previewConfig={{ showPreview: false }}

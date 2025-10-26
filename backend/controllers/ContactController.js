@@ -92,12 +92,18 @@ export const getAllContacts = async (req, res) => {
   try {
     const users = await User.find(
       { _id: { $ne: req.userId } },
-      "firstName lastName _id email"
+      "firstName lastName _id email bio image username"
     );
 
     const contacts = users.map((user) => ({
       label: user.firstName ? `${user.firstName} ${user.lastName}` : user.email,
-      value: user._id,
+      id: user._id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      bio: user.bio,
+      image: user.image,
+      username: user.username,
     }));
 
     return res.status(200).json({ contacts });

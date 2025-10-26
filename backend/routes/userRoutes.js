@@ -27,7 +27,7 @@ import { upload } from "../middleware/uploadMiddleware.js"; // For profile image
 const router = express.Router();
 
 // --- Profile Management ---
-router.get("/:userId", verifyToken, getUserProfile); // Get a user's profile by ID
+router.get("/:userId([0-9a-fA-F]{24})", getUserProfile); // Get a user's profile by ID
 router.put("/", verifyToken, updateUserProfile); // Update current user's profile
 router.post(
   "/profile-image",
@@ -46,7 +46,6 @@ router.get("/all-contacts", verifyToken, getAllContacts); // Your existing route
 
 // --- NEW ROUTE FOR DM INITIATION ---
 router.post("/initiate-dm", verifyToken, initiateDirectMessage);
-
 
 // --- User Status & Live Location ---
 router.put("/status", verifyToken, updateUserStatus); // Set user's online/away/etc. status
