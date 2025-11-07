@@ -129,8 +129,6 @@ const ChatListPanel = ({
 	const getChatAvatar = useCallback((chat) => {
 		if (!chat) return null;
 
-		if (chat.avatar) return chat.avatar;
-
 		if (chat.type === 'direct' && chat.participants && currentUser) {
 			const otherParticipant = chat.participants.find(p => p._id !== currentUser._id);
 			if (otherParticipant?.image) {

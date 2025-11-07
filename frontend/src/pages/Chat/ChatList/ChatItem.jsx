@@ -5,7 +5,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import Avatar from '@/components/Avatar';
-import { UsersIcon } from '@heroicons/react/24/outline';
+import { GroupsIcon } from '@/skeletons/ChatPanel';
 
 const formatTime = (date) => {
 	return date.toLocaleTimeString('en-US', {
@@ -161,14 +161,6 @@ const ChatItem = ({
 	const handlePopOutToggle = useCallback(() => {
 		const chatId = chat.conversationId;
 
-		console.log('Pop-out toggle clicked:', {
-			chatId,
-			isSelectedChat,
-			isPopOut,
-			selectedChatId,
-			popOutChats
-		});
-
 		if (isSelectedChat) {
 			// If this chat is currently selected (whether popped out or not), close/deselect it
 			console.log('Closing chat - is selected');
@@ -239,13 +231,10 @@ const ChatItem = ({
 									</div>
 								</div>
 							)}
-
 							{/* Avatar with ring and styling */}
-							<div className={`
-								relative flex-shrink-0 transition-all duration-300
-								${isSelectedChat || isSelected
-									? 'ring-2 ring-blue-300 dark:ring-blue-500/60 rounded-full shadow-lg shadow-blue-500/25'
-									: 'ring-2 ring-gray-200 dark:ring-slate-700 rounded-full group-hover:ring-gray-300 dark:group-hover:ring-slate-600'
+							<div className={`relative flex-shrink-0 transition-all duration-300 rounded-full ${isSelectedChat || isSelected
+								? 'ring-2 ring-blue-300 dark:ring-blue-500/60 shadow-lg shadow-blue-500/25'
+								: 'ring-2 ring-gray-200 dark:ring-slate-700 group-hover:ring-gray-300 dark:group-hover:ring-slate-600'
 								}`}>
 								{isDirect ? (
 									<Avatar
@@ -255,17 +244,13 @@ const ChatItem = ({
 										size="md"
 										showOnline={true}
 										isOnline={isOnlineStatus}
-										className="w-12 h-12"
 									/>
 								) : (
-									<div className={`
-										h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold
-										transition-all duration-300 shadow-lg
-										${isSelectedChat || isSelected
-											? 'bg-gradient-to-br from-indigo-100 to-blue-100 dark:from-indigo-800/60 dark:to-blue-800/60 border-2 border-blue-300 dark:border-blue-600/60 text-indigo-700 dark:text-blue-300'
-											: 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-700 dark:to-slate-800 border-2 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 group-hover:border-gray-300 dark:group-hover:border-slate-500 group-hover:from-gray-200 group-hover:to-gray-300 dark:group-hover:from-slate-600 dark:group-hover:to-slate-700'
+									<div className={`h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold transition-all duration-300 shadow-lg ${isSelectedChat || isSelected
+										? 'bg-gradient-to-br from-indigo-100 to-blue-100 dark:from-indigo-800/60 dark:to-blue-800/60 border-2 border-blue-300 dark:border-blue-600/60 text-indigo-700 dark:text-blue-300'
+										: 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-700 dark:to-slate-800 border-2 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 group-hover:border-gray-300 dark:group-hover:border-slate-500 group-hover:from-gray-200 group-hover:to-gray-300 dark:group-hover:from-slate-600 dark:group-hover:to-slate-700'
 										}`}>
-										<UsersIcon className="h-6 w-6" />
+										<GroupsIcon />
 									</div>
 								)}
 							</div>

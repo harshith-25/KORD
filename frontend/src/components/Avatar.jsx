@@ -7,11 +7,12 @@ import { getInitials } from '@/utils/helpers';
  * @param {string} props.src - Avatar image URL
  * @param {string} props.name - User/Chat name for fallback initials
  * @param {string} props.id - Unique ID for consistent color generation
- * @param {string} props.size - Size variant: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+ * @param {('xs' | 'sm' | 'md' | 'lg' | 'xl')} props.size - Size variant
  * @param {boolean} props.showOnline - Whether to show online indicator
  * @param {boolean} props.isOnline - Online status
  * @param {string} props.className - Additional CSS classes
  */
+
 function Avatar({
 	src,
 	name = '',
@@ -19,9 +20,9 @@ function Avatar({
 	size = 'md',
 	showOnline = false,
 	isOnline = false,
-	className = ''
+	className = '',
 }) {
-	// Size mappings
+	// Size mappings (unchanged)
 	const sizeClasses = {
 		xs: 'w-8 h-8 text-xs',
 		sm: 'w-10 h-10 text-sm',
@@ -30,7 +31,7 @@ function Avatar({
 		xl: 'w-16 h-16 text-xl'
 	};
 
-	// Online indicator size mappings
+	// Online indicator size mappings (unchanged)
 	const onlineIndicatorSizes = {
 		xs: 'w-2 h-2 border',
 		sm: 'w-2.5 h-2.5 border-2',
@@ -42,8 +43,9 @@ function Avatar({
 	const avatarSize = sizeClasses[size] || sizeClasses.md;
 	const indicatorSize = onlineIndicatorSizes[size] || onlineIndicatorSizes.md;
 
-	// Generate colorful gradient based on ID or name
+	// Gradient and Fallback URL logic (unchanged for brevity)
 	const getColorfulGradient = (identifier) => {
+		// ... (Your gradient logic)
 		const gradients = [
 			'from-rose-400 via-pink-500 to-purple-600',
 			'from-blue-400 via-cyan-500 to-teal-600',
@@ -73,17 +75,15 @@ function Avatar({
 	};
 
 	const gradient = getColorfulGradient(id || name);
-
-	// Generate fallback avatar URL using DiceBear
 	const fallbackAvatarUrl = `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=random&radius=50`;
 
 	return (
-		<div className={`relative inline-block ${className}`}>
+		<div className={`relative ${className}`}>
 			<ShadcnAvatar className={`${avatarSize} flex-shrink-0`}>
 				<AvatarImage
 					src={src || fallbackAvatarUrl}
 					alt={name}
-					className="object-cover"
+					className="aspect-square size-full"
 				/>
 				<AvatarFallback
 					className={`bg-gradient-to-br ${gradient} text-white font-semibold`}
