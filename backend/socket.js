@@ -148,6 +148,45 @@ function initSocket(httpServer) {
           console.log(
             `✅ Message broadcasted to conversation ${conversationId}`
           );
+
+          // Mark as delivered for online recipients immediately
+          const recipients = conversation.participants.filter(
+            (p) => p.user.toString() !== socket.userId.toString() && p.isActive
+          );
+
+          // Process deliveries sequentially to avoid race conditions
+          for (const recipient of recipients) {
+            const recipientId = recipient.user.toString();
+            const isRecipientOnline = onlineUsers.has(recipientId);
+
+            if (isRecipientOnline) {
+              // Recipient is online - mark as delivered immediately
+              try {
+                // Reload message to ensure we have the latest version with methods
+                const messageToUpdate = await Message.findById(newMessage._id);
+                if (messageToUpdate) {
+                  await messageToUpdate.markAsDelivered(recipientId);
+
+                  // Emit delivery status to sender
+                  const senderSocketIds = getUserSocketIds(socket.userId);
+                  senderSocketIds.forEach((socketId) => {
+                    io.to(socketId).emit("message_delivered", {
+                      messageId: newMessage._id,
+                      conversationId,
+                      recipientId,
+                      deliveredAt: new Date(),
+                    });
+                  });
+
+                  console.log(
+                    `✅ Message ${newMessage._id} marked as delivered to ${recipientId}`
+                  );
+                }
+              } catch (error) {
+                console.error(`Error marking message as delivered:`, error);
+              }
+            }
+          }
         } catch (error) {
           console.error("Error sending message via socket:", error);
           socket.emit("message_send_error", {
@@ -279,6 +318,44 @@ function initSocket(httpServer) {
         });
       }
     });
+
+    // Event: Confirm message delivery (when recipient receives message)
+    socket.on(
+      "message_delivery_confirmed",
+      async ({ messageId, conversationId }) => {
+        try {
+          const message = await Message.findById(messageId);
+
+          if (!message) {
+            console.warn(`Message with ID ${messageId} not found`);
+            return;
+          }
+
+          // Mark as delivered for this user
+          await message.markAsDelivered(socket.userId);
+
+          // Emit delivery status to sender
+          const senderId = message.sender.toString();
+          if (senderId !== socket.userId.toString()) {
+            const senderSocketIds = getUserSocketIds(senderId);
+            senderSocketIds.forEach((socketId) => {
+              io.to(socketId).emit("message_delivered", {
+                messageId,
+                conversationId,
+                recipientId: socket.userId,
+                deliveredAt: new Date(),
+              });
+            });
+          }
+
+          console.log(
+            `✅ Message ${messageId} delivery confirmed by user ${socket.userId}`
+          );
+        } catch (error) {
+          console.error("Error handling message_delivery_confirmed:", error);
+        }
+      }
+    );
 
     // Event: Mark single message as read
     socket.on("mark_message_as_read", async ({ messageId, conversationId }) => {

@@ -39,7 +39,7 @@ const participantSchema = mongoose.Schema(
 
 const conversationSettingsSchema = mongoose.Schema(
   {
-    allowMemberToAddOthers: { type: Boolean, default: false },
+    allowMemberToAddOthers: { type: Boolean, default: false }, // Legacy - kept for backwards compatibility
     allowMemberToEditInfo: { type: Boolean, default: false },
     messageRetentionDays: { type: Number, default: 0 },
     isEncrypted: { type: Boolean, default: false },
@@ -48,7 +48,31 @@ const conversationSettingsSchema = mongoose.Schema(
       duration: { type: Number, default: 0 },
     },
     onlyAdminsCanMessage: { type: Boolean, default: false },
-    requireApprovalToJoin: { type: Boolean, default: false },
+    requireApprovalToJoin: { type: Boolean, default: false }, // Legacy - kept for backwards compatibility
+    // WhatsApp-style membership control
+    whoCanAdd: {
+      type: String,
+      enum: ["everyone", "only_admins"],
+      default: "everyone", // Default allows everyone to add (backwards compatible)
+    },
+    approveNewParticipants: {
+      type: Boolean,
+      default: false, // Default: direct add (backwards compatible)
+    },
+    allowModeratorsToApprove: {
+      type: Boolean,
+      default: false, // Only admins can approve by default
+    },
+    // Invite link settings
+    inviteLinkEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    inviteLinkCode: {
+      type: String,
+      default: null,
+      sparse: true,
+    },
     slowModeDelay: { type: Number, default: 0 },
     isReadOnly: { type: Boolean, default: false },
     allowFileUploads: { type: Boolean, default: true },
@@ -161,6 +185,16 @@ const conversationSchema = mongoose.Schema(
         user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
         requestedAt: { type: Date, default: Date.now },
         message: String,
+        source: {
+          type: String,
+          enum: ["admin_add", "invite_link", "direct_join"],
+          default: "direct_join",
+        },
+        requestedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          default: null, // If admin initiated the add, track who
+        },
       },
     ],
   },

@@ -1,19 +1,41 @@
 import { create } from "zustand";
 import { io } from "socket.io-client";
 import { useAuthStore } from "./authStore";
+import { useConversationStore } from "./conversationStore";
 import { HOST } from "@/utils/ApiRoutes";
 
-let socket;
+let socket = null;
+
+/**
+ * Normalize common server payload differences into a consistent shape.
+ */
+const normalizeConversationId = (payload) =>
+  payload?.conversationId ||
+  payload?.conversation?.conversationId ||
+  payload?.conversation?.id ||
+  payload?.id;
+
+const normalizeUserId = (payload) =>
+  payload?.userId ||
+  payload?.participantId ||
+  payload?.memberId ||
+  payload?.user?._id ||
+  payload?.user;
 
 export const useSocketStore = create((set, get) => ({
   socket: null,
   socketConnected: false,
   error: null,
 
+  /** Track rooms to auto-rejoin on reconnect */
+  joinedRooms: new Set(),
+
   isAuthenticated: () => {
-    return useAuthStore.getState().isAuthenticated;
+    const auth = useAuthStore.getState().isAuthenticated;
+    return typeof auth === "function" ? auth() : !!auth;
   },
 
+  /** Initialize and connect socket */
   initializeSocket: () => {
     if (!get().isAuthenticated()) {
       console.log("User not authenticated, skipping socket initialization");
@@ -27,7 +49,10 @@ export const useSocketStore = create((set, get) => ({
     }
 
     if (socket) {
-      socket.disconnect();
+      try {
+        socket.removeAllListeners();
+        socket.disconnect();
+      } catch {}
     }
 
     socket = io(HOST, {
@@ -35,20 +60,35 @@ export const useSocketStore = create((set, get) => ({
       auth: { token: localStorage.getItem("token") },
       forceNew: true,
       transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 800,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
+
+    set({ socket, socketConnected: false, error: null });
 
     get().setupSocketListeners();
 
-    set({ socket, socketConnected: false });
     return socket;
   },
 
+  /** Attach all listeners and forward to conversationStore */
   setupSocketListeners: () => {
     if (!socket) return;
 
+    // ---------- Core connection lifecycle ----------
     socket.on("connect", () => {
       console.log("✅ Socket connected:", socket.id);
       set({ socketConnected: true, error: null });
+
+      const rooms = Array.from(get().joinedRooms || []);
+      if (rooms.length) {
+        rooms.forEach((roomId) => {
+          socket.emit("join_conversation", roomId);
+        });
+      }
     });
 
     socket.on("disconnect", (reason) => {
@@ -57,30 +97,164 @@ export const useSocketStore = create((set, get) => ({
     });
 
     socket.on("connect_error", (error) => {
-      console.error("🔥 Socket connection error:", error);
+      console.error("🔥 Socket connection error:", error?.message || error);
       set({
-        error: `Socket connection failed: ${error.message}`,
+        error: `Socket connection failed: ${error?.message || "Unknown error"}`,
         socketConnected: false,
       });
     });
+
+    // ---------- Conversation meta ----------
+    socket.on("conversation_updated", async (payload) => {
+      const id = normalizeConversationId(payload);
+      if (!id) return;
+      await useConversationStore.getState().ensureConversationLoaded(id);
+      useConversationStore.getState().handleConversationUpdated(payload);
+    });
+
+    socket.on("conversation_deleted", (payload) => {
+      useConversationStore.getState().handleConversationDeleted(payload);
+      const id = normalizeConversationId(payload);
+      if (id) get().joinedRooms.delete(id);
+    });
+
+    socket.on("added_to_conversation", async (payload) => {
+      useConversationStore.getState().handleAddedToConversation(payload);
+      const convo =
+        payload?.conversation?.conversationId || payload?.conversationId;
+      if (convo) get().joinedRooms.add(convo);
+    });
+
+    // ---------- Participant lifecycle ----------
+    socket.on("participant_joined", async (payload) => {
+      const id = normalizeConversationId(payload);
+      const participant =
+        payload?.participant || payload?.user || payload?.member;
+      if (!id || !participant) return;
+
+      await useConversationStore.getState().ensureConversationLoaded(id);
+
+      useConversationStore.getState().handleParticipantJoined({
+        conversationId: id,
+        participant,
+      });
+    });
+
+    socket.on("participant_left", async (payload) => {
+      const id = normalizeConversationId(payload);
+      const userId = normalizeUserId(payload);
+      if (!id || !userId) return;
+
+      await useConversationStore.getState().ensureConversationLoaded(id);
+
+      useConversationStore.getState().handleParticipantLeft({
+        conversationId: id,
+        userId,
+      });
+    });
+
+    socket.on("participant_removed", async (payload) => {
+      const id = normalizeConversationId(payload);
+      const userId = normalizeUserId(payload);
+      if (!id || !userId) return;
+
+      await useConversationStore.getState().ensureConversationLoaded(id);
+
+      useConversationStore.getState().handleParticipantRemoved({
+        conversationId: id,
+        userId,
+      });
+
+      const me = useAuthStore.getState().user?._id;
+      if (me && userId === me) {
+        get().joinedRooms.delete(id);
+      }
+    });
+
+    // ---------- Join requests ----------
+    socket.on("join_request_received", async (payload) => {
+      const id = normalizeConversationId(payload);
+      if (!id) return;
+      await useConversationStore.getState().ensureConversationLoaded(id);
+      useConversationStore.getState().handleJoinRequestReceived(payload);
+    });
+
+    socket.on("join_request_approved", async (payload) => {
+      const id = normalizeConversationId(payload);
+      if (!id) return;
+      await useConversationStore.getState().ensureConversationLoaded(id);
+      // The participant_joined event will also fire, but we refresh here too
+      const updated = await useConversationStore.getState().getConversationById(id);
+      if (updated) {
+        useConversationStore.getState().handleParticipantJoined(payload);
+      }
+    });
+
+    socket.on("join_request_rejected", async (payload) => {
+      const id = normalizeConversationId(payload);
+      if (!id) return;
+      await useConversationStore.getState().ensureConversationLoaded(id);
+      // Refresh conversation to update join requests list
+      try {
+        await useConversationStore.getState().getConversationById(id);
+        // The store's getConversationById will update the local state with the refreshed data
+      } catch (error) {
+        console.error("Error refreshing conversation after join request rejection:", error);
+      }
+    });
+
+    // ---------- Roles, permissions, mute ----------
+    socket.on("member_role_updated", async (payload) => {
+      const id = normalizeConversationId(payload);
+      if (!id) return;
+      await useConversationStore.getState().ensureConversationLoaded(id);
+      useConversationStore.getState().handleMemberRoleUpdated(payload);
+    });
+
+    socket.on("permissions_updated", async (payload) => {
+      const id = normalizeConversationId(payload);
+      if (!id) return;
+      await useConversationStore.getState().ensureConversationLoaded(id);
+      useConversationStore.getState().handlePermissionsUpdated(payload);
+    });
+
+    socket.on("mute_status_changed", async (payload) => {
+      const id = normalizeConversationId(payload);
+      if (!id) return;
+      await useConversationStore.getState().ensureConversationLoaded(id);
+      useConversationStore.getState().handleMuteStatusChanged(payload);
+    });
+
+    // ---------- Presence ----------
+    socket.on("user-status-update", ({ userId, isOnline }) => {
+      if (!userId) return;
+      useConversationStore
+        .getState()
+        .updateParticipantOnlineStatus(userId, !!isOnline);
+    });
+
+    // (Message events forwarded via public on*/off* below if UI wants them)
   },
 
   // =========================================================================
-  // SOCKET EVENT EMITTERS
+  // EMITTERS (rooms & messaging)
   // =========================================================================
-
   joinConversation: (conversationId) => {
-    if (socket?.connected && conversationId) {
-      console.log("Joining conversation:", conversationId);
+    if (!conversationId) return;
+    if (socket?.connected) {
       socket.emit("join_conversation", conversationId);
+      get().joinedRooms.add(conversationId);
+    } else {
+      get().joinedRooms.add(conversationId);
     }
   },
 
   leaveConversation: (conversationId) => {
-    if (socket?.connected && conversationId) {
-      console.log("Leaving conversation:", conversationId);
+    if (!conversationId) return;
+    if (socket?.connected) {
       socket.emit("leave_conversation", conversationId);
     }
+    get().joinedRooms.delete(conversationId);
   },
 
   sendMessage: (messageData) => {
@@ -91,19 +265,19 @@ export const useSocketStore = create((set, get) => ({
 
   markMessageAsRead: (messageId, conversationId) => {
     if (socket?.connected && messageId && conversationId) {
-      socket.emit("mark_message_as_read", {
-        messageId,
-        conversationId,
-      });
+      socket.emit("mark_message_as_read", { messageId, conversationId });
     }
   },
 
   markMessagesAsRead: (conversationId, userId) => {
     if (socket?.connected && conversationId && userId) {
-      socket.emit("messages_read", {
-        conversationId,
-        userId,
-      });
+      socket.emit("messages_read", { conversationId, userId });
+    }
+  },
+
+  confirmMessageDelivery: (messageId, conversationId) => {
+    if (socket?.connected && messageId && conversationId) {
+      socket.emit("message_delivery_confirmed", { messageId, conversationId });
     }
   },
 
@@ -120,224 +294,84 @@ export const useSocketStore = create((set, get) => ({
   },
 
   // =========================================================================
-  // SOCKET EVENT LISTENERS
+  // PUBLIC LISTENER REGISTRATION (UI can subscribe)
   // =========================================================================
+  onReceiveMessage: (cb) => socket && socket.on("message_received", cb),
+  offReceiveMessage: (cb) =>
+    socket &&
+    (cb ? socket.off("message_received", cb) : socket.off("message_received")),
 
-  onReceiveMessage: (callback) => {
-    if (socket) {
-      socket.on("message_received", callback);
-    }
-  },
+  onMessageRead: (cb) => socket && socket.on("message_read", cb),
+  offMessageRead: (cb) =>
+    socket &&
+    (cb ? socket.off("message_read", cb) : socket.off("message_read")),
 
-  offReceiveMessage: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("message_received", callback);
-      } else {
-        socket.off("message_received");
-      }
-    }
-  },
+  onMessagesRead: (cb) => socket && socket.on("messages_read", cb),
+  offMessagesRead: (cb) =>
+    socket &&
+    (cb ? socket.off("messages_read", cb) : socket.off("messages_read")),
 
-  onMessageRead: (callback) => {
-    if (socket) {
-      socket.on("message_read", callback);
-    }
-  },
+  onMessageDelivered: (cb) => socket && socket.on("message_delivered", cb),
+  offMessageDelivered: (cb) =>
+    socket &&
+    (cb ? socket.off("message_delivered", cb) : socket.off("message_delivered")),
 
-  offMessageRead: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("message_read", callback);
-      } else {
-        socket.off("message_read");
-      }
-    }
-  },
+  onMessageReaction: (cb) => socket && socket.on("message_reaction", cb),
+  offMessageReaction: (cb) =>
+    socket &&
+    (cb ? socket.off("message_reaction", cb) : socket.off("message_reaction")),
 
-  onMessagesRead: (callback) => {
-    if (socket) {
-      socket.on("messages_read", callback);
-    }
-  },
+  onMessageEdited: (cb) => socket && socket.on("message_edited", cb),
+  offMessageEdited: (cb) =>
+    socket &&
+    (cb ? socket.off("message_edited", cb) : socket.off("message_edited")),
 
-  offMessagesRead: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("messages_read", callback);
-      } else {
-        socket.off("messages_read");
-      }
-    }
-  },
+  onMessageDeleted: (cb) => socket && socket.on("message_deleted", cb),
+  offMessageDeleted: (cb) =>
+    socket &&
+    (cb ? socket.off("message_deleted", cb) : socket.off("message_deleted")),
 
-  onMessageReadError: (callback) => {
-    if (socket) {
-      socket.on("message_read_error", callback);
-    }
-  },
+  onTyping: (cb) => socket && socket.on("typing_start", cb),
+  offTyping: (cb) =>
+    socket &&
+    (cb ? socket.off("typing_start", cb) : socket.off("typing_start")),
 
-  offMessageReadError: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("message_read_error", callback);
-      } else {
-        socket.off("message_read_error");
-      }
-    }
-  },
+  onStopTyping: (cb) => socket && socket.on("typing_stop", cb),
+  offStopTyping: (cb) =>
+    socket && (cb ? socket.off("typing_stop", cb) : socket.off("typing_stop")),
 
-  // NEW: Reaction events
-  onMessageReaction: (callback) => {
-    if (socket) {
-      socket.on("message_reaction", callback);
-    }
-  },
+  onConversationUpdated: (cb) =>
+    socket && socket.on("conversation_updated", cb),
+  offConversationUpdated: (cb) =>
+    socket &&
+    (cb
+      ? socket.off("conversation_updated", cb)
+      : socket.off("conversation_updated")),
 
-  offMessageReaction: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("message_reaction", callback);
-      } else {
-        socket.off("message_reaction");
-      }
-    }
-  },
+  onParticipantJoined: (cb) => socket && socket.on("participant_joined", cb),
+  offParticipantJoined: (cb) =>
+    socket &&
+    (cb
+      ? socket.off("participant_joined", cb)
+      : socket.off("participant_joined")),
 
-  // NEW: Edit events
-  onMessageEdited: (callback) => {
-    if (socket) {
-      socket.on("message_edited", callback);
-    }
-  },
+  onParticipantLeft: (cb) => socket && socket.on("participant_left", cb),
+  offParticipantLeft: (cb) =>
+    socket &&
+    (cb ? socket.off("participant_left", cb) : socket.off("participant_left")),
 
-  offMessageEdited: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("message_edited", callback);
-      } else {
-        socket.off("message_edited");
-      }
-    }
-  },
-
-  // NEW: Delete events
-  onMessageDeleted: (callback) => {
-    if (socket) {
-      socket.on("message_deleted", callback);
-    }
-  },
-
-  offMessageDeleted: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("message_deleted", callback);
-      } else {
-        socket.off("message_deleted");
-      }
-    }
-  },
-
-  onUserStatusUpdate: (callback) => {
-    if (socket) {
-      socket.on("user-status-update", callback);
-    }
-  },
-
-  offUserStatusUpdate: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("user-status-update", callback);
-      } else {
-        socket.off("user-status-update");
-      }
-    }
-  },
-
-  onTyping: (callback) => {
-    if (socket) {
-      socket.on("typing_start", callback);
-    }
-  },
-
-  offTyping: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("typing_start", callback);
-      } else {
-        socket.off("typing_start");
-      }
-    }
-  },
-
-  onStopTyping: (callback) => {
-    if (socket) {
-      socket.on("typing_stop", callback);
-    }
-  },
-
-  offStopTyping: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("typing_stop", callback);
-      } else {
-        socket.off("typing_stop");
-      }
-    }
-  },
-
-  onConversationUpdated: (callback) => {
-    if (socket) {
-      socket.on("conversation_updated", callback);
-    }
-  },
-
-  offConversationUpdated: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("conversation_updated", callback);
-      } else {
-        socket.off("conversation_updated");
-      }
-    }
-  },
-
-  onParticipantJoined: (callback) => {
-    if (socket) {
-      socket.on("participant_joined", callback);
-    }
-  },
-
-  offParticipantJoined: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("participant_joined", callback);
-      } else {
-        socket.off("participant_joined");
-      }
-    }
-  },
-
-  onParticipantLeft: (callback) => {
-    if (socket) {
-      socket.on("participant_left", callback);
-    }
-  },
-
-  offParticipantLeft: (callback) => {
-    if (socket) {
-      if (callback) {
-        socket.off("participant_left", callback);
-      } else {
-        socket.off("participant_left");
-      }
-    }
-  },
+  // >>> Added for compatibility with your chatStore <<<
+  onUserStatusUpdate: (cb) => socket && socket.on("user-status-update", cb),
+  offUserStatusUpdate: (cb) =>
+    socket &&
+    (cb
+      ? socket.off("user-status-update", cb)
+      : socket.off("user-status-update")),
+  // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
   // =========================================================================
-  // CONNECTION MANAGEMENT
+  // CONNECTION MGMT
   // =========================================================================
-
   reconnectSocket: () => {
     if (socket) {
       socket.connect();
@@ -347,31 +381,34 @@ export const useSocketStore = create((set, get) => ({
   },
 
   disconnectSocket: () => {
-    if (socket) {
-      socket.disconnect();
+    try {
+      if (socket) {
+        socket.removeAllListeners();
+        socket.disconnect();
+      }
+    } finally {
       socket = null;
+      set({ socket: null, socketConnected: false, error: null });
+      get().joinedRooms.clear();
     }
-    set({ socket: null, socketConnected: false, error: null });
   },
 
   getSocket: () => socket,
 
-  isConnected: () => get().socketConnected && socket?.connected,
+  isConnected: () => get().socketConnected && !!socket?.connected,
 
-  clearError: () => {
-    set({ error: null });
-  },
+  clearError: () => set({ error: null }),
 
   cleanup: () => {
-    if (socket) {
-      socket.removeAllListeners();
-      socket.disconnect();
+    try {
+      if (socket) {
+        socket.removeAllListeners();
+        socket.disconnect();
+      }
+    } finally {
       socket = null;
+      set({ socket: null, socketConnected: false, error: null });
+      get().joinedRooms.clear();
     }
-    set({
-      socket: null,
-      socketConnected: false,
-      error: null,
-    });
   },
 }));

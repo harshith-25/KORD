@@ -83,22 +83,29 @@ function MessageBubble({
 		return myReactions.some(r => r.emoji === emoji);
 	};
 
-	// Status icon component
+	// Status icon component - WhatsApp-like read receipts
 	const StatusIcon = () => {
 		if (!isSentByMe || isDeleted) return null;
 
 		switch (status) {
 			case 'sending':
+			case 'pending':
+				// Clock icon - Message is being sent (pending)
 				return <Clock className="w-3 h-3 text-gray-400" />;
 			case 'sent':
+				// Single gray tick - Message reached server but not delivered yet
 				return <Check className="w-3 h-3 text-gray-400" />;
 			case 'delivered':
+				// Double gray ticks - Message delivered to recipient's device but not read
 				return <CheckCheck className="w-3 h-3 text-gray-400" />;
 			case 'read':
-				return <CheckCheck className="w-3 h-3 text-blue-500" />;
+				// Double blue ticks - Message read by recipient
+				return <CheckCheck className="w-3 h-3 text-blue-500 dark:text-blue-400" />;
 			case 'failed':
+				// Red exclamation - Message failed to send
 				return <AlertCircle className="w-3 h-3 text-red-500" />;
 			default:
+				// Default to sent status
 				return <Check className="w-3 h-3 text-gray-400" />;
 		}
 	};

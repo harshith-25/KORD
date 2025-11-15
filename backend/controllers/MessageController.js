@@ -164,11 +164,12 @@ export const sendMessage = asyncHandler(async (req, res) => {
   let messageData = {
     conversationId,
     sender: senderId,
-    readReceipts: [{ user: senderId, readAt: new Date() }],
+    readReceipts: [{ user: senderId, readAt: new Date() }], // Sender always reads their own message
+    deliveryReceipts: [], // Will be populated when recipients receive it
     isForwarded: !!isForwarded,
     replyTo: replyTo || null,
     metadata,
-    deliveryStatus: "sent",
+    deliveryStatus: "sent", // Starts as "sent" when saved to server
   };
 
   if (file) {
@@ -243,6 +244,41 @@ export const sendMessage = asyncHandler(async (req, res) => {
     const recipients = conversation.participants.filter(
       (p) => p.user.toString() !== senderId.toString() && p.isActive
     );
+
+    // Mark as delivered for online recipients immediately
+    // Process sequentially to avoid race conditions
+    for (const recipient of recipients) {
+      const recipientId = recipient.user.toString();
+      const isRecipientOnline = isUserOnline(recipientId);
+      
+      if (isRecipientOnline) {
+        // Recipient is online - mark as delivered immediately
+        try {
+          // Reload message to ensure we have the latest version with methods
+          const messageToUpdate = await Message.findById(message._id);
+          if (messageToUpdate) {
+            await messageToUpdate.markAsDelivered(recipientId);
+            
+            // Emit delivery status to sender
+            const senderSocketIds = getUserSocketIds(senderId);
+            senderSocketIds.forEach((socketId) => {
+              io.to(socketId).emit("message_delivered", {
+                messageId: message._id,
+                conversationId,
+                recipientId,
+                deliveredAt: new Date(),
+              });
+            });
+            
+            console.log(
+              `✅ Message ${message._id} marked as delivered to ${recipientId}`
+            );
+          }
+        } catch (error) {
+          console.error(`Error marking message as delivered:`, error);
+        }
+      }
+    }
 
     // Handle Mentions: Parse message content for @mentions
     const mentionedUsernames = new Set();
@@ -783,9 +819,10 @@ export const forwardMessage = asyncHandler(async (req, res) => {
         originalMessageId: originalMessage._id,
         forwardedAt: new Date(),
       },
-      readReceipts: [{ user: currentUserId, readAt: new Date() }],
-      deliveryStatus: "sent",
-    };
+        readReceipts: [{ user: currentUserId, readAt: new Date() }],
+        deliveryReceipts: [],
+        deliveryStatus: "sent",
+      };
     const newMessage = await Message.create(newMessageData);
 
     // Update conversation last message

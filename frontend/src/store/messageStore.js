@@ -76,6 +76,7 @@ const processRawMessage = (msg, currentUser, getMessageStatus) => {
     senderId: msgSenderId,
     readBy: msg.readReceipts || msg.readBy || [], // Support both readReceipts and readBy
     readReceipts: msg.readReceipts || msg.readBy || [],
+    deliveryReceipts: msg.deliveryReceipts || [],
     reactions: msg.reactions || [],
     isEdited: msg.isEdited || false,
     isDeleted: msg.isDeleted || false,
@@ -108,20 +109,19 @@ export const useMessageStore = create(
 
         if (!isSentByCurrentUser) return "received";
 
-        // Handle sending and failed states
+        // Handle sending and failed states (optimistic updates)
         if (
           message.status === "sending" ||
-          message.deliveryStatus === "sending"
+          message.deliveryStatus === "sending" ||
+          message.deliveryStatus === "pending"
         )
           return "sending";
         if (message.status === "failed" || message.deliveryStatus === "failed")
           return "failed";
 
-        // For sent messages, check read receipts
+        // For sent messages, check read receipts first (highest priority)
         const readBy = message.readReceipts || message.readBy || [];
-
-        // If no read receipts yet, it's just sent
-        if (readBy.length === 0) return "sent";
+        const deliveryReceipts = message.deliveryReceipts || [];
 
         // Check if anyone other than the sender has read it
         const othersRead = readBy.some((receipt) => {
@@ -130,10 +130,85 @@ export const useMessageStore = create(
         });
 
         if (othersRead) {
-          return "read";
-        } else {
-          return "delivered";
+          return "read"; // Double blue ticks
         }
+
+        // Check if message has been delivered to recipients (but not read yet)
+        const othersDelivered = deliveryReceipts.some((receipt) => {
+          const receiptUserId = receipt.user?._id || receipt.user;
+          return receiptUserId?.toString() !== currentUserId?.toString();
+        });
+
+        if (othersDelivered) {
+          return "delivered"; // Double gray ticks
+        }
+
+        // Message is just sent (reached server but not delivered yet)
+        return "sent"; // Single gray tick
+      },
+
+      updateMessageDeliveryStatus: (
+        conversationId,
+        messageId,
+        recipientId,
+        deliveredAt
+      ) => {
+        set((state) => {
+          const messages = state.messages[conversationId] || [];
+          const currentUser = useAuthStore.getState().user;
+
+          console.log(
+            `🔄 Updating delivery status for message ${messageId} to recipient ${recipientId}`
+          );
+
+          const updatedMessages = messages.map((msg) => {
+            if (msg._id === messageId || msg.id === messageId) {
+              const deliveryReceipts = [...(msg.deliveryReceipts || [])];
+              const alreadyDelivered = deliveryReceipts.some((receipt) => {
+                const userId =
+                  typeof receipt === "object"
+                    ? receipt.user?._id || receipt.user
+                    : receipt;
+                return userId?.toString() === recipientId.toString();
+              });
+
+              if (!alreadyDelivered) {
+                deliveryReceipts.push({
+                  user: recipientId,
+                  deliveredAt: deliveredAt || new Date(),
+                });
+                console.log(
+                  `✅ Added delivery receipt for message ${messageId}`
+                );
+              }
+
+              const newStatus = get().calculateMessageStatus(
+                {
+                  ...msg,
+                  deliveryReceipts,
+                  readReceipts: msg.readReceipts || msg.readBy || [],
+                },
+                currentUser?._id
+              );
+
+              console.log(
+                `📊 Message ${messageId} delivery status updated to: ${newStatus}`
+              );
+
+              return {
+                ...msg,
+                deliveryReceipts,
+                status: newStatus,
+                deliveryStatus: newStatus,
+              };
+            }
+            return msg;
+          });
+
+          return {
+            messages: { ...state.messages, [conversationId]: updatedMessages },
+          };
+        });
       },
 
       updateMessageReadStatus: (
@@ -166,8 +241,29 @@ export const useMessageStore = create(
                 console.log(`✅ Added read receipt for message ${messageId}`);
               }
 
+              // Ensure delivery receipt exists (read implies delivered)
+              const deliveryReceipts = [...(msg.deliveryReceipts || [])];
+              const hasDeliveryReceipt = deliveryReceipts.some((receipt) => {
+                const userId =
+                  typeof receipt === "object"
+                    ? receipt.user?._id || receipt.user
+                    : receipt;
+                return userId?.toString() === readerId.toString();
+              });
+              if (!hasDeliveryReceipt) {
+                deliveryReceipts.push({
+                  user: readerId,
+                  deliveredAt: readAt || new Date(),
+                });
+              }
+
               const newStatus = get().calculateMessageStatus(
-                { ...msg, readReceipts: readBy, readBy },
+                {
+                  ...msg,
+                  readReceipts: readBy,
+                  readBy,
+                  deliveryReceipts,
+                },
                 currentUser?._id
               );
 
@@ -179,6 +275,7 @@ export const useMessageStore = create(
                 ...msg,
                 readBy,
                 readReceipts: readBy,
+                deliveryReceipts,
                 status: newStatus,
                 deliveryStatus: newStatus,
               };
@@ -250,6 +347,12 @@ export const useMessageStore = create(
             console.log("➕ Adding message from other user");
             get().addMessage(message.conversationId, message);
 
+            // Confirm delivery for received messages
+            const socketStore = useSocketStore.getState();
+            if (message._id && message.conversationId) {
+              socketStore.confirmMessageDelivery(message._id, message.conversationId);
+            }
+
             // Update conversation store with the new message
             const displayMessage = message.media
               ? `📎 ${
@@ -296,6 +399,24 @@ export const useMessageStore = create(
           }
         });
 
+        // --- Message Delivery Status ---
+        socketStore.onMessageDelivered?.(
+          ({ messageId, conversationId, recipientId, deliveredAt }) => {
+            console.log("📬 Message delivered event:", {
+              messageId,
+              conversationId,
+              recipientId,
+              deliveredAt,
+            });
+            get().updateMessageDeliveryStatus(
+              conversationId,
+              messageId,
+              recipientId,
+              deliveredAt
+            );
+          }
+        );
+
         // --- Single Message Read Receipt ---
         socketStore.onMessageRead(
           ({ messageId, readerId, conversationId, readAt }) => {
@@ -335,28 +456,37 @@ export const useMessageStore = create(
                 currentUser?._id?.toString();
 
               if (isSentByMe && msg._id) {
-                const alreadyReadByReader = (
-                  msg.readReceipts ||
-                  msg.readBy ||
-                  []
-                ).some(
+                const readBy = [...(msg.readReceipts || msg.readBy || [])];
+                const deliveryReceipts = [...(msg.deliveryReceipts || [])];
+                const readAt = new Date().toISOString();
+
+                // Check if already read
+                const alreadyReadByReader = readBy.some(
                   (r) =>
                     (r.user?._id || r.user)?.toString() === userId.toString()
                 );
 
                 if (!alreadyReadByReader) {
-                  const readBy = [
-                    ...(msg.readReceipts || msg.readBy || []),
-                    { user: userId, readAt: new Date().toISOString() },
-                  ];
+                  readBy.push({ user: userId, readAt });
+                  
+                  // Ensure delivery receipt exists (read implies delivered)
+                  const hasDeliveryReceipt = deliveryReceipts.some(
+                    (r) =>
+                      (r.user?._id || r.user)?.toString() === userId.toString()
+                  );
+                  if (!hasDeliveryReceipt) {
+                    deliveryReceipts.push({ user: userId, deliveredAt: readAt });
+                  }
+
                   const newStatus = get().calculateMessageStatus(
-                    { ...msg, readReceipts: readBy, readBy },
+                    { ...msg, readReceipts: readBy, readBy, deliveryReceipts },
                     currentUser?._id
                   );
                   return {
                     ...msg,
                     readBy,
                     readReceipts: readBy,
+                    deliveryReceipts,
                     status: newStatus,
                     deliveryStatus: newStatus,
                   };
@@ -455,6 +585,7 @@ export const useMessageStore = create(
         socketStore.offReceiveMessage();
         socketStore.offMessageRead();
         socketStore.offMessagesRead();
+        socketStore.offMessageDelivered?.();
         socketStore.offMessageReaction?.();
         socketStore.offMessageEdited?.();
         socketStore.offMessageDeleted?.();
@@ -525,27 +656,11 @@ export const useMessageStore = create(
             get().calculateMessageStatus
           );
 
-          let finalStatus = processedServerMsg.status;
-          if (
-            processedServerMsg.readReceipts &&
-            processedServerMsg.readReceipts.length > 1
-          ) {
-            const othersRead = processedServerMsg.readReceipts.some(
-              (receipt) =>
-                (receipt.user?._id || receipt.user)?.toString() !==
-                currentUser?._id?.toString()
-            );
-            if (othersRead) {
-              finalStatus = "read";
-            } else {
-              finalStatus = "delivered";
-            }
-          } else if (
-            processedServerMsg.readReceipts &&
-            processedServerMsg.readReceipts.length === 1
-          ) {
-            finalStatus = "sent";
-          }
+          // Recalculate status using the proper calculation function
+          const finalStatus = get().calculateMessageStatus(
+            processedServerMsg,
+            currentUser?._id
+          );
 
           existingMessages[optimisticIndex] = {
             ...processedServerMsg,
@@ -802,10 +917,11 @@ export const useMessageStore = create(
           text: content || "",
           type: "sent",
           messageType,
-          status: "sending",
-          deliveryStatus: "sending",
+          status: "sending", // Clock icon - message is being sent
+          deliveryStatus: "sending", // Clock icon - message is being sent
           readBy: [{ user: currentUser._id, readAt: new Date() }],
           readReceipts: [{ user: currentUser._id, readAt: new Date() }],
+          deliveryReceipts: [], // Empty until delivered
           media,
           metadata: {
             ...metadata,

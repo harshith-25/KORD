@@ -21,7 +21,7 @@ const AboutSettings = () => (
         </div>
         <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            <strong>Developer:</strong> Kord Team
+            <strong>Developer:</strong> Harshith S Shetty
           </p>
         </div>
       </div>

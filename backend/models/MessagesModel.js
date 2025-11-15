@@ -16,6 +16,20 @@ const reactionSchema = mongoose.Schema(
   { _id: false }
 );
 
+// Define delivery receipt schema for tracking when message reaches recipient's device
+const deliveryReceiptSchema = mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    deliveredAt: { type: Date, default: Date.now },
+    deviceInfo: { type: String },
+  },
+  { _id: false }
+);
+
 // Define read receipt schema for better tracking
 const readReceiptSchema = mongoose.Schema(
   {
@@ -120,10 +134,11 @@ const messageSchema = mongoose.Schema(
       newValue: String,
     },
     timestamp: { type: Date, default: Date.now, index: true },
+    deliveryReceipts: [deliveryReceiptSchema],
     readReceipts: [readReceiptSchema],
     deliveryStatus: {
       type: String,
-      enum: ["sent", "delivered", "failed"],
+      enum: ["pending", "sent", "delivered", "read", "failed"],
       default: "sent",
     },
     isDeleted: { type: Boolean, default: false },
@@ -493,6 +508,7 @@ messageSchema.statics.findConversationMessages = async function (
         pinnedBy: 1,
         mentions: 1,
         metadata: 1,
+        deliveryReceipts: 1,
         readReceipts: 1,
         deliveryStatus: 1,
         systemData: 1,
@@ -587,6 +603,27 @@ messageSchema.statics.getMediaFiles = function (conversationId, options = {}) {
     .populate("sender", "name avatar username firstName lastName");
 };
 
+// Instance method to mark message as delivered (reached recipient's device)
+messageSchema.methods.markAsDelivered = function (userId, deviceInfo = null) {
+  const existingReceipt = this.deliveryReceipts.find(
+    (r) => r.user.toString() === userId.toString()
+  );
+
+  if (!existingReceipt) {
+    this.deliveryReceipts.push({
+      user: userId,
+      deliveredAt: new Date(),
+      deviceInfo,
+    });
+    
+    // Update delivery status if not already read by all recipients
+    if (this.deliveryStatus !== "read") {
+      this.deliveryStatus = "delivered";
+    }
+  }
+  return this.save();
+};
+
 // Instance method to mark message as read
 messageSchema.methods.markAsRead = function (userId, deviceInfo = null) {
   const existingReceipt = this.readReceipts.find(
@@ -599,6 +636,21 @@ messageSchema.methods.markAsRead = function (userId, deviceInfo = null) {
       readAt: new Date(),
       deviceInfo,
     });
+    
+    // Ensure delivery receipt exists (read implies delivered)
+    const hasDeliveryReceipt = this.deliveryReceipts.find(
+      (r) => r.user.toString() === userId.toString()
+    );
+    if (!hasDeliveryReceipt) {
+      this.deliveryReceipts.push({
+        user: userId,
+        deliveredAt: new Date(),
+        deviceInfo,
+      });
+    }
+    
+    // Update delivery status to read
+    this.deliveryStatus = "read";
   }
   return this.save();
 };
