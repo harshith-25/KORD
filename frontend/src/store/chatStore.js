@@ -7,7 +7,6 @@ import { useMessageStore } from "./messageStore";
 export const useChatStore = create((set, get) => ({
   selectedChatId: null,
   error: null,
-  // Real-time State - ALWAYS use Map for typingUsers
   typingUsers: new Map(), // { conversationId: Set([userId1, userId2]) }
   onlineUsers: [],
 

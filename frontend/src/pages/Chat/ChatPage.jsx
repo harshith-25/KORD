@@ -15,12 +15,9 @@ const ChatPage = () => {
 		} else if (!chatId && selectedChatId) {
 			// If no chatId in URL but one is selected in store, navigate to it
 			navigate(`/chat/${selectedChatId}`, { replace: true });
-		} else if (!chatId && !selectedChatId && contacts.length > 0) {
-			// If no chat selected and no chatId in URL, but contacts exist, select the first one
-			setSelectedChat(contacts[0].id);
-			navigate(`/chat/${contacts[0].id}`, { replace: true });
 		}
-	}, [chatId, setSelectedChat, selectedChatId, navigate, contacts]);
+		// Removed automatic selection of first conversation - user must explicitly click
+	}, [chatId, setSelectedChat, selectedChatId, navigate]);
 
 	// ChatMainPanel will render the empty state if no chat is selected,
 	// or the actual chat view if selectedChatId is set by the useEffect.

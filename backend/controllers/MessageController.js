@@ -18,8 +18,9 @@ const formatReplyData = (repliedMsg, currentUserId) => {
   let senderName = "Unknown User";
   if (repliedMsg.sender) {
     if (repliedMsg.sender.firstName) {
-      senderName = `${repliedMsg.sender.firstName} ${repliedMsg.sender.lastName || ""
-        }`.trim();
+      senderName = `${repliedMsg.sender.firstName} ${
+        repliedMsg.sender.lastName || ""
+      }`.trim();
     } else if (repliedMsg.sender.name) {
       senderName = repliedMsg.sender.name;
     } else if (repliedMsg.sender.username) {
@@ -51,10 +52,10 @@ const formatReplyData = (repliedMsg, currentUserId) => {
     content: repliedMsg.content,
     file: repliedMsg.file
       ? {
-        fileName: repliedMsg.file.fileName,
-        fileMimeType: repliedMsg.file.fileMimeType,
-        thumbnailPath: repliedMsg.file.thumbnailPath,
-      }
+          fileName: repliedMsg.file.fileName,
+          fileMimeType: repliedMsg.file.fileMimeType,
+          thumbnailPath: repliedMsg.file.thumbnailPath,
+        }
       : undefined,
     isDeleted: false,
   };
@@ -183,10 +184,10 @@ export const sendMessage = asyncHandler(async (req, res) => {
     messageData.type = file.mimetype.startsWith("image/")
       ? "image"
       : file.mimetype.startsWith("video/")
-        ? "video"
-        : file.mimetype.startsWith("audio/")
-          ? "audio"
-          : "file";
+      ? "video"
+      : file.mimetype.startsWith("audio/")
+      ? "audio"
+      : "file";
   } else {
     messageData.content = content;
     messageData.type = type || "text";
@@ -250,7 +251,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
     for (const recipient of recipients) {
       const recipientId = recipient.user.toString();
       const isRecipientOnline = isUserOnline(recipientId);
-      
+
       if (isRecipientOnline) {
         // Recipient is online - mark as delivered immediately
         try {
@@ -258,7 +259,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
           const messageToUpdate = await Message.findById(message._id);
           if (messageToUpdate) {
             await messageToUpdate.markAsDelivered(recipientId);
-            
+
             // Emit delivery status to sender
             const senderSocketIds = getUserSocketIds(senderId);
             senderSocketIds.forEach((socketId) => {
@@ -269,7 +270,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
                 deliveredAt: new Date(),
               });
             });
-            
+
             console.log(
               `✅ Message ${message._id} marked as delivered to ${recipientId}`
             );
@@ -311,9 +312,11 @@ export const sendMessage = asyncHandler(async (req, res) => {
             recipient: originalSenderId,
             sender: senderId,
             type: "reply",
-            content: `${req.user.username || req.user.firstName
-              } replied to your message in ${conversation.name ? "#" + conversation.name : "a chat"
-              }`,
+            content: `${
+              req.user.username || req.user.firstName
+            } replied to your message in ${
+              conversation.name ? "#" + conversation.name : "a chat"
+            }`,
             relatedEntity: { id: message._id, kind: "Message" },
             metadata: {
               replyPreview: message.content?.toString().substring(0, 50) || "",
@@ -344,12 +347,15 @@ export const sendMessage = asyncHandler(async (req, res) => {
       if (!isRecipientOnline || mentionedUserIds.has(recipientId)) {
         let notificationContent;
         if (mentionedUserIds.has(recipientId)) {
-          notificationContent = `@${req.user.username || req.user.firstName
-            } mentioned you in ${conversation.name ? "#" + conversation.name : "a chat"
-            }`;
+          notificationContent = `@${
+            req.user.username || req.user.firstName
+          } mentioned you in ${
+            conversation.name ? "#" + conversation.name : "a chat"
+          }`;
         } else {
-          notificationContent = `New message in ${conversation.name ? "#" + conversation.name : "a chat"
-            } from ${req.user.username || req.user.firstName}`;
+          notificationContent = `New message in ${
+            conversation.name ? "#" + conversation.name : "a chat"
+          } from ${req.user.username || req.user.firstName}`;
         }
 
         await Notification.create({
@@ -819,10 +825,10 @@ export const forwardMessage = asyncHandler(async (req, res) => {
         originalMessageId: originalMessage._id,
         forwardedAt: new Date(),
       },
-        readReceipts: [{ user: currentUserId, readAt: new Date() }],
-        deliveryReceipts: [],
-        deliveryStatus: "sent",
-      };
+      readReceipts: [{ user: currentUserId, readAt: new Date() }],
+      deliveryReceipts: [],
+      deliveryStatus: "sent",
+    };
     const newMessage = await Message.create(newMessageData);
 
     // Update conversation last message
@@ -945,4 +951,188 @@ export const searchMessages = asyncHandler(async (req, res) => {
   });
 
   res.status(200).json(messages);
+});
+
+// @desc    Get detailed message info (delivery and read receipts)
+// @route   GET /api/messages/:messageId/info
+// @access  Private
+export const getMessageInfo = asyncHandler(async (req, res) => {
+  const { messageId } = req.params;
+  const currentUserId = req.user.id;
+
+  const message = await Message.findById(messageId)
+    .populate("sender", "firstName lastName username name avatar image")
+    .populate({
+      path: "deliveryReceipts.user",
+      select: "firstName lastName username name avatar image",
+    })
+    .populate({
+      path: "readReceipts.user",
+      select: "firstName lastName username name avatar image",
+    })
+    .populate({
+      path: "reactions.user",
+      select: "firstName lastName username name avatar image",
+    });
+
+  if (!message) {
+    return sendErrorResponse(res, null, "Message not found.", 404);
+  }
+
+  // Verify user is part of the conversation
+  const conversation = await Conversation.findOne({
+    conversationId: message.conversationId,
+  });
+
+  if (!conversation) {
+    return sendErrorResponse(res, null, "Conversation not found.", 404);
+  }
+
+  const isParticipant = conversation.participants.some(
+    (p) => p.user.toString() === currentUserId.toString()
+  );
+
+  if (!isParticipant) {
+    return sendErrorResponse(
+      res,
+      null,
+      "You are not authorized to view this message info.",
+      403
+    );
+  }
+
+  // Format delivery receipts with user info
+  const deliveryReceipts = (message.deliveryReceipts || []).map((receipt) => {
+    const user = receipt.user;
+    return {
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+        name: user.name,
+        avatar: user.avatar,
+        image: user.image,
+      },
+      deliveredAt: receipt.deliveredAt,
+    };
+  });
+
+  // Format read receipts with user info
+  const readReceipts = (message.readReceipts || []).map((receipt) => {
+    const user = receipt.user;
+    return {
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+        name: user.name,
+        avatar: user.avatar,
+        image: user.image,
+      },
+      readAt: receipt.readAt,
+    };
+  });
+
+  // Format reactions with user info
+  const reactions = (message.reactions || []).map((reaction) => {
+    const user = reaction.user;
+    return {
+      emoji: reaction.emoji,
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+        name: user.name,
+        avatar: user.avatar,
+        image: user.image,
+      },
+      reactedAt: reaction.reactedAt,
+    };
+  });
+
+  // Get list of all participants who haven't read or received the message
+  const allParticipantIds = conversation.participants
+    .filter(
+      (p) => p.isActive && p.user.toString() !== message.sender.toString()
+    )
+    .map((p) => p.user.toString());
+
+  const deliveredUserIds = deliveryReceipts.map((r) => r.user._id.toString());
+  const readUserIds = readReceipts.map((r) => r.user._id.toString());
+
+  const notDeliveredUserIds = allParticipantIds.filter(
+    (id) => !deliveredUserIds.includes(id)
+  );
+  const deliveredButNotReadUserIds = deliveredUserIds.filter(
+    (id) => !readUserIds.includes(id)
+  );
+
+  // Fetch user details for those who haven't received/read
+  const notDeliveredUsers = await User.find({
+    _id: { $in: notDeliveredUserIds },
+  }).select("firstName lastName username name avatar image");
+
+  const deliveredButNotReadUsers = await User.find({
+    _id: { $in: deliveredButNotReadUserIds },
+  }).select("firstName lastName username name avatar image");
+
+  const messageInfo = {
+    messageId: message._id,
+    conversationId: message.conversationId,
+    isGroupMessage:
+      conversation.type === "group" || conversation.participants.length > 2,
+    sender: {
+      _id: message.sender._id,
+      firstName: message.sender.firstName,
+      lastName: message.sender.lastName,
+      username: message.sender.username,
+      name: message.sender.name,
+      avatar: message.sender.avatar,
+      image: message.sender.image,
+    },
+    content: message.content,
+    type: message.type,
+    createdAt: message.createdAt,
+    isEdited: message.isEdited,
+    editedAt: message.editedAt,
+    isDeleted: message.isDeleted,
+    deliveryStatus: message.deliveryStatus,
+
+    // Detailed receipts
+    deliveryReceipts,
+    readReceipts,
+    reactions,
+
+    // Summary counts
+    totalParticipants: allParticipantIds.length,
+    deliveredCount: deliveryReceipts.length,
+    readCount: readReceipts.length,
+    notDeliveredCount: notDeliveredUsers.length,
+    deliveredButNotReadCount: deliveredButNotReadUsers.length,
+
+    // Users who haven't interacted with message yet
+    notDeliveredUsers: notDeliveredUsers.map((u) => ({
+      _id: u._id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      username: u.username,
+      name: u.name,
+      avatar: u.avatar,
+      image: u.image,
+    })),
+    deliveredButNotReadUsers: deliveredButNotReadUsers.map((u) => ({
+      _id: u._id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      username: u.username,
+      name: u.name,
+      avatar: u.avatar,
+      image: u.image,
+    })),
+  };
+
+  res.status(200).json(messageInfo);
 });
