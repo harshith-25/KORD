@@ -135,7 +135,7 @@ function MessageBubble({
 			show: isSentByMe && !isDeleted,
 			className: 'text-red-600 font-semibold'
 		},
-		{ icon: Info, label: 'Info', action: () => onInfo?.(message), show: true },
+		{ icon: Info, label: 'Info', action: () => onInfo?.(message), show: isSentByMe },
 	].filter(option => option.show);
 
 	const handleMenuOptionClick = (action) => {

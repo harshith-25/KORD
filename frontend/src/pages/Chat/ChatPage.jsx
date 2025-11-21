@@ -6,7 +6,7 @@ import { useChatStore } from '@/store/chatStore';
 const ChatPage = () => {
 	const { chatId } = useParams();
 	const navigate = useNavigate();
-	const { setSelectedChat, contacts, selectedChatId } = useChatStore();
+	const { setSelectedChat, selectedChatId } = useChatStore();
 
 	useEffect(() => {
 		// If a chatId is in the URL, set it as the selected chat in the store

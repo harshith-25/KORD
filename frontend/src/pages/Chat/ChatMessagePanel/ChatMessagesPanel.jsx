@@ -45,6 +45,7 @@ function ChatMessagesPanel({
 	const [forwardingMessage, setForwardingMessage] = useState(null);
 	const [selectedContacts, setSelectedContacts] = useState([]);
 	const [messageInfo, setMessageInfo] = useState(null);
+	const [messageAnchor, setMessageAnchor] = useState(null); // NEW: Anchor for popover
 	const [deletingMessage, setDeletingMessage] = useState(null);
 	const [deleteForEveryone, setDeleteForEveryone] = useState(false);
 	const [longPressedMessage, setLongPressedMessage] = useState(null);
@@ -392,6 +393,11 @@ function ChatMessagesPanel({
 	// Handle info
 	const handleInfo = useCallback((message) => {
 		setMessageInfo(message);
+		// Set the anchor element for the popover
+		const element = messageRefs.current[message._id || message.id];
+		if (element) {
+			setMessageAnchor(element);
+		}
 	}, []);
 
 	// Long press handling for mobile
@@ -606,7 +612,11 @@ function ChatMessagesPanel({
 				onForwardSend={handleForwardSend}
 				onCancelForward={() => setForwardingMessage(null)}
 				messageInfo={messageInfo}
-				onCloseInfo={() => setMessageInfo(null)}
+				messageAnchor={messageAnchor}
+				onCloseInfo={() => {
+					setMessageInfo(null);
+					setMessageAnchor(null);
+				}}
 				longPressedMessage={longPressedMessage}
 				onCloseLongPress={() => setLongPressedMessage(null)}
 				onLongPressAction={(action, message) => {

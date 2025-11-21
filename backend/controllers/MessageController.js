@@ -1001,39 +1001,58 @@ export const getMessageInfo = asyncHandler(async (req, res) => {
     );
   }
 
-  // Format delivery receipts with user info
-  const deliveryReceipts = (message.deliveryReceipts || []).map((receipt) => {
-    const user = receipt.user;
-    return {
-      user: {
-        _id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        username: user.username,
-        name: user.name,
-        avatar: user.avatar,
-        image: user.image,
-      },
-      deliveredAt: receipt.deliveredAt,
-    };
-  });
+  // Only the sender can view message info (WhatsApp behavior)
+  const isSender = message.sender._id.toString() === currentUserId.toString();
+  if (!isSender) {
+    return sendErrorResponse(
+      res,
+      null,
+      "Only the message sender can view message info.",
+      403
+    );
+  }
 
-  // Format read receipts with user info
-  const readReceipts = (message.readReceipts || []).map((receipt) => {
-    const user = receipt.user;
-    return {
-      user: {
-        _id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        username: user.username,
-        name: user.name,
-        avatar: user.avatar,
-        image: user.image,
-      },
-      readAt: receipt.readAt,
-    };
-  });
+  // Format delivery receipts with user info (exclude sender)
+  const deliveryReceipts = (message.deliveryReceipts || [])
+    .filter((receipt) => receipt.user._id.toString() !== message.sender._id.toString())
+    .map((receipt) => {
+      const user = receipt.user;
+      return {
+        user: {
+          _id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          name: user.name,
+          username: user.username,
+          phone: user.phone,
+          email: user.email,
+          avatar: user.avatar,
+          image: user.image,
+        },
+        deliveredAt: receipt.deliveredAt,
+      };
+    });
+
+  // Format read receipts with user info (exclude sender)
+  const readReceipts = (message.readReceipts || [])
+    .filter((receipt) => receipt.user._id.toString() !== message.sender._id.toString())
+    .map((receipt) => {
+      const user = receipt.user;
+      return {
+        user: {
+          _id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          name: user.name,
+          username: user.username,
+          phone: user.phone,
+          email: user.email,
+          avatar: user.avatar,
+          image: user.image,
+        },
+        readAt: receipt.readAt,
+      };
+    });
 
   // Format reactions with user info
   const reactions = (message.reactions || []).map((reaction) => {
@@ -1070,60 +1089,79 @@ export const getMessageInfo = asyncHandler(async (req, res) => {
     (id) => !readUserIds.includes(id)
   );
 
-  // Fetch user details for those who haven't received/read
+  // Get delivered timestamps for users who haven't read
+  const deliveredButNotReadWithTimestamps = deliveryReceipts.filter((receipt) =>
+    deliveredButNotReadUserIds.includes(receipt.user._id.toString())
+  );
+
+  // Calculate global deliveredAt and readAt timestamps
+  let globalDeliveredAt = null;
+  let globalReadAt = null;
+
+  if (deliveryReceipts.length > 0) {
+    globalDeliveredAt = deliveryReceipts.reduce((earliest, receipt) => {
+      const current = new Date(receipt.deliveredAt);
+      return !earliest || current < new Date(earliest) ? receipt.deliveredAt : earliest;
+    }, null);
+  }
+
+  if (readReceipts.length > 0) {
+    globalReadAt = readReceipts.reduce((latest, receipt) => {
+      const current = new Date(receipt.readAt);
+      return !latest || current > new Date(latest) ? receipt.readAt : latest;
+    }, null);
+  }
+
+  // Fetch user details for those who haven't delivered
   const notDeliveredUsers = await User.find({
     _id: { $in: notDeliveredUserIds },
   }).select("firstName lastName username name avatar image");
 
-  const deliveredButNotReadUsers = await User.find({
-    _id: { $in: deliveredButNotReadUserIds },
-  }).select("firstName lastName username name avatar image");
+  // Prepare file/media info for preview
+  let filePreview = null;
+  if (message.file) {
+    filePreview = {
+      type: message.file.fileType || message.type,
+      name: message.file.fileName,
+      url: message.file.filePath,
+      size: message.file.fileSize,
+    };
+  }
 
   const messageInfo = {
     messageId: message._id,
     conversationId: message.conversationId,
     isGroupMessage:
       conversation.type === "group" || conversation.participants.length > 2,
-    sender: {
-      _id: message.sender._id,
-      firstName: message.sender.firstName,
-      lastName: message.sender.lastName,
-      username: message.sender.username,
-      name: message.sender.name,
-      avatar: message.sender.avatar,
-      image: message.sender.image,
-    },
+    
+    // Message details for preview
     content: message.content,
     type: message.type,
+    file: filePreview,
     createdAt: message.createdAt,
     isEdited: message.isEdited,
-    editedAt: message.editedAt,
     isDeleted: message.isDeleted,
-    deliveryStatus: message.deliveryStatus,
 
-    // Detailed receipts
-    deliveryReceipts,
+    // Global timestamps for top-level display
+    deliveredAt: globalDeliveredAt,
+    readAt: globalReadAt,
+
+    // Read receipts (people who read the message)
     readReceipts,
-    reactions,
-
-    // Summary counts
-    totalParticipants: allParticipantIds.length,
-    deliveredCount: deliveryReceipts.length,
     readCount: readReceipts.length,
-    notDeliveredCount: notDeliveredUsers.length,
-    deliveredButNotReadCount: deliveredButNotReadUsers.length,
+
+    // Delivered but not read (people who haven't read yet) - WITH timestamps
+    deliveredButNotReadUsers: deliveredButNotReadWithTimestamps.map((receipt) => ({
+      user: receipt.user,
+      deliveredAt: receipt.deliveredAt,
+    })),
+    pendingReadCount: deliveredButNotReadWithTimestamps.length,
+
+    // Summary
+    totalParticipants: allParticipantIds.length,
 
     // Users who haven't interacted with message yet
     notDeliveredUsers: notDeliveredUsers.map((u) => ({
-      _id: u._id,
-      firstName: u.firstName,
-      lastName: u.lastName,
-      username: u.username,
-      name: u.name,
-      avatar: u.avatar,
-      image: u.image,
-    })),
-    deliveredButNotReadUsers: deliveredButNotReadUsers.map((u) => ({
       _id: u._id,
       firstName: u.firstName,
       lastName: u.lastName,

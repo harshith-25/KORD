@@ -20,6 +20,7 @@ const MessageActions = memo(({
 	onForwardSend,
 	onCancelForward,
 	messageInfo,
+	messageAnchor,
 	onCloseInfo,
 	longPressedMessage,
 	onCloseLongPress,
@@ -27,13 +28,14 @@ const MessageActions = memo(({
 	currentUser
 }) => {
 	const [showMessageInfo, setShowMessageInfo] = useState(false);
-	
+
 	// Auto-open popover when messageInfo is set from onInfo click
 	useEffect(() => {
 		if (messageInfo) {
 			setShowMessageInfo(true);
 		}
 	}, [messageInfo]);
+
 	const isCurrentUserMessage = (message) => {
 		return message?.sender?._id === currentUser?._id ||
 			message?.sender === currentUser?._id ||
@@ -142,6 +144,7 @@ const MessageActions = memo(({
 							onCloseInfo();
 						}
 					}}
+					anchorRef={messageAnchor}
 				/>
 			)}
 
