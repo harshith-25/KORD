@@ -4,6 +4,7 @@ import { format, isToday, isYesterday } from 'date-fns';
 import { Popover, PopoverContent, PopoverAnchor } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getInitials } from '@/utils/helpers';
 import api from '@/utils/axiosInstance';
 import { MESSAGE_ROUTES } from '@/utils/ApiRoutes';
@@ -88,8 +89,21 @@ const MessageInfoPopover = ({ message, isOpen, onOpenChange, anchorRef }) => {
 				avoidCollisions={true}
 			>
 				{loading ? (
-					<div className="flex justify-center items-center py-12 px-8">
-						<div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-blue-500"></div>
+					<div className="p-4 min-w-[200px] space-y-3">
+						<div className="flex items-center justify-between">
+							<div className="flex items-center gap-2">
+								<Skeleton className="h-4 w-4 rounded" />
+								<Skeleton className="h-4 w-16" />
+							</div>
+							<Skeleton className="h-4 w-24" />
+						</div>
+						<div className="flex items-center justify-between">
+							<div className="flex items-center gap-2">
+								<Skeleton className="h-4 w-4 rounded" />
+								<Skeleton className="h-4 w-20" />
+							</div>
+							<Skeleton className="h-4 w-24" />
+						</div>
 					</div>
 				) : info ? (
 					<>
