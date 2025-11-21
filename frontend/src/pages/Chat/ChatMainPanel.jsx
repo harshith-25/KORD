@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useSocketStore } from '@/store/socketStore';
 import { useChatStore } from '@/store/chatStore';
@@ -324,4 +324,4 @@ function ChatMainPanel() {
 	);
 }
 
-export default ChatMainPanel;
+export default memo(ChatMainPanel);

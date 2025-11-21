@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import { MoreVertical, Check, CheckCheck, Clock, AlertCircle, Reply, Edit2, Copy, Forward, Trash2, Info, Smile } from 'lucide-react';
 import { formatTimeSafe } from '@/utils/helpers';
 import QuickReactions from './QuickReactions';
@@ -484,4 +484,4 @@ function MessageBubble({
 	);
 }
 
-export default MessageBubble;
+export default memo(MessageBubble);

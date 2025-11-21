@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, memo } from 'react';
 import { Check, CheckCheck, Clock, Mic, Image, FileText, Video, MapPin, Archive, MessageCircleMore, Pin, Star, VolumeX, Trash2, ExternalLink, X } from 'lucide-react';
 import { isToday, isYesterday, isThisWeek } from 'date-fns';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
@@ -415,4 +415,4 @@ const ChatItem = ({
 	);
 };
 
-export default ChatItem;
+export default memo(ChatItem);

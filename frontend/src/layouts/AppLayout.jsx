@@ -7,6 +7,11 @@ import { useChatStore } from '@/store/chatStore';
 import { useConversationStore } from '@/store/conversationStore';
 import { useMessageStore } from '@/store/messageStore';
 import { ArrowLeft, Menu, X } from 'lucide-react';
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // Breakpoints
 const BREAKPOINTS = {
@@ -38,8 +43,8 @@ const AppLayout = ({ children }) => {
 	const [screenSize, setScreenSize] = useState('desktop');
 	const [isMobile, setIsMobile] = useState(false);
 	const [isTablet, setIsTablet] = useState(false);
-	const [showMobileMenu, setShowMobileMenu] = useState(false);
 	const [showChatList, setShowChatList] = useState(true);
+	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
 	// Panel width state
 	const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
@@ -70,12 +75,7 @@ const AppLayout = ({ children }) => {
 		} else if (!mobile) {
 			setShowChatList(true);
 		}
-
-		// Close mobile menu on resize to larger screens
-		if (!mobile && showMobileMenu) {
-			setShowMobileMenu(false);
-		}
-	}, [isOnChatPage, showMobileMenu]);
+	}, [isOnChatPage]);
 
 	useEffect(() => {
 		updateScreenSize();
@@ -109,10 +109,6 @@ const AppLayout = ({ children }) => {
 			navigate('/chat', { replace: true });
 		}
 	}, [isMobile, navigate]);
-
-	const toggleMobileMenu = useCallback(() => {
-		setShowMobileMenu(prev => !prev);
-	}, []);
 
 	// --- Panel Resize Logic (Desktop/Tablet only) ---
 	const handleMouseMove = useCallback((e) => {
@@ -200,20 +196,6 @@ const AppLayout = ({ children }) => {
 		};
 	}, [handleMouseMove, handleMouseUp]);
 
-	// Handle escape key to close mobile menu
-	useEffect(() => {
-		const handleEscape = (e) => {
-			if (e.key === 'Escape' && showMobileMenu) {
-				setShowMobileMenu(false);
-			}
-		};
-
-		if (showMobileMenu) {
-			document.addEventListener('keydown', handleEscape);
-			return () => document.removeEventListener('keydown', handleEscape);
-		}
-	}, [showMobileMenu]);
-
 	if (!isAuthenticated) {
 		return null;
 	}
@@ -243,12 +225,18 @@ const AppLayout = ({ children }) => {
 								<ArrowLeft className="h-5 w-5 text-gray-600 dark:text-gray-300" />
 							</button>
 						) : (
-							<button
-								onClick={toggleMobileMenu}
-								className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors touch-target"
-							>
-								<Menu className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-							</button>
+							<DropdownMenu open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+								<DropdownMenuTrigger asChild>
+									<button
+										className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors touch-target"
+									>
+										<Menu className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+									</button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="start" className="w-56 bg-[#111b21] border-[#2a3942] text-[#aebac1]">
+									<GlobalSidebar isMobile={true} onItemClick={() => setIsMobileMenuOpen(false)} />
+								</DropdownMenuContent>
+							</DropdownMenu>
 						)}
 
 						<h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
@@ -258,28 +246,6 @@ const AppLayout = ({ children }) => {
 						<div className="w-9" /> {/* Spacer for centering */}
 					</div>
 				</div>
-
-				{/* Mobile Menu Overlay */}
-				{showMobileMenu && (
-					<>
-						<div
-							className="fixed inset-0 bg-black bg-opacity-50 z-40"
-							onClick={() => setShowMobileMenu(false)}
-						/>
-						<div className="fixed left-0 top-0 bottom-0 w-80 max-w-[85vw] bg-white dark:bg-gray-800 z-50 transform transition-transform duration-300 safe-area-top">
-							<div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-								<h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Menu</h2>
-								<button
-									onClick={() => setShowMobileMenu(false)}
-									className="p-2 -mr-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-								>
-									<X className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-								</button>
-							</div>
-							<GlobalSidebar isMobile={true} onItemClick={() => setShowMobileMenu(false)} />
-						</div>
-					</>
-				)}
 
 				{/* Mobile Content */}
 				<div className="flex-1 flex flex-col pt-16 safe-area-bottom">
@@ -304,44 +270,47 @@ const AppLayout = ({ children }) => {
 
 	// Desktop/Tablet Layout
 	return (
-		<div className="flex h-screen overflow-hidden bg-gray-100 dark:bg-gray-900">
-			{/* Global Navigation Sidebar */}
+		<div className="flex h-screen overflow-hidden bg-gray-100 dark:bg-gray-900 relative">
+			{/* Global Navigation Sidebar - Fixed */}
 			<GlobalSidebar />
 
-			{/* Chat List Panel - Resizable on desktop/tablet */}
-			<div
-				style={{
-					width: isTablet ? '320px' : `${panelWidth}px`,
-					minWidth: isTablet ? '320px' : `${MIN_PANEL_WIDTH}px`,
-					maxWidth: isTablet ? '320px' : `${MAX_PANEL_WIDTH}px`
-				}}
-				className={`flex-shrink-0 flex flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 min-w-0 ${!isResizing ? 'transition-none' : ''
-					} ${isTablet ? 'tablet-panel' : ''}`}
-			>
-				<ChatListPanel />
-			</div>
-
-			{/* Resizer Handle - Desktop only */}
-			{!isTablet && (
+			{/* Content Container - Offset by 65px for collapsed sidebar */}
+			<div className="flex-1 flex ml-[65px] h-full">
+				{/* Chat List Panel - Resizable on desktop/tablet */}
 				<div
-					className={`w-0.5 bg-gray-300 dark:bg-gray-600 cursor-ew-resize hover:bg-purple-500 dark:hover:bg-purple-400 transition-colors duration-150 flex-shrink-0 relative ${isResizing ? 'bg-purple-500 dark:bg-purple-400' : ''}`}
-					onMouseDown={handleMouseDown}
-					title="Drag to resize chat panel"
+					style={{
+						width: isTablet ? '320px' : `${panelWidth}px`,
+						minWidth: isTablet ? '320px' : `${MIN_PANEL_WIDTH}px`,
+						maxWidth: isTablet ? '320px' : `${MAX_PANEL_WIDTH}px`
+					}}
+					className={`flex-shrink-0 flex flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 min-w-0 ${!isResizing ? 'transition-none' : ''
+						} ${isTablet ? 'tablet-panel' : ''}`}
 				>
-					{/* Miniscus/handle in the center */}
-					<div
-						className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.75 h-6 bg-green-500 z-1 dark:bg-green-100 rounded-full opacity-70"
-						style={{
-							boxShadow: '0 0 2px 0.5px rgba(0,0,0,0.08)',
-						}}
-					/>
+					<ChatListPanel />
 				</div>
-			)}
 
-			{/* Main Content Area */}
-			<main className="flex-1 flex flex-col bg-white dark:bg-gray-800 min-w-0 overflow-hidden">
-				{children}
-			</main>
+				{/* Resizer Handle - Desktop only */}
+				{!isTablet && (
+					<div
+						className={`w-0.5 bg-gray-300 dark:bg-gray-600 cursor-ew-resize hover:bg-purple-500 dark:hover:bg-purple-400 transition-colors duration-150 flex-shrink-0 relative ${isResizing ? 'bg-purple-500 dark:bg-purple-400' : ''}`}
+						onMouseDown={handleMouseDown}
+						title="Drag to resize chat panel"
+					>
+						{/* Miniscus/handle in the center */}
+						<div
+							className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.75 h-6 bg-green-500 z-1 dark:bg-green-100 rounded-full opacity-70"
+							style={{
+								boxShadow: '0 0 2px 0.5px rgba(0,0,0,0.08)',
+							}}
+						/>
+					</div>
+				)}
+
+				{/* Main Content Area */}
+				<main className="flex-1 flex flex-col bg-white dark:bg-gray-800 min-w-0 overflow-hidden">
+					{children}
+				</main>
+			</div>
 		</div>
 	);
 };

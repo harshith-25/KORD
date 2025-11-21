@@ -108,7 +108,7 @@ function SignInPlaceholder() {
 
 const renderSkeleton = () => (
 	<div className="divide-y divide-gray-100 dark:divide-gray-700">
-		{Array.from({ length: 7 }).map((_, i) => (
+		{Array.from({ length: 6 }).map((_, i) => (
 			<div key={i} className="flex items-center p-3 animate-pulse">
 				<div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-full mr-3"></div>
 				<div className="flex-1">

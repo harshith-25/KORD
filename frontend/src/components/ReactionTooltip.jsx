@@ -1,9 +1,5 @@
 import { memo, useState } from 'react';
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -81,19 +77,19 @@ function ReactionTooltip({ reactions, currentUserId, children }) {
 				</div>
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-80 p-0"
+				className="w-80 p-0 bg-white dark:bg-black border-gray-300 dark:border-gray-700"
 				side="top"
 				align="center"
 				sideOffset={8}
 				onMouseEnter={() => setOpen(true)}
 				onMouseLeave={() => setOpen(false)}
 			>
-				<div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 rounded-t-md">
+				<div className="p-3 border-b border-gray-300 dark:border-gray-700 bg-white dark:bg-black rounded-t-md">
 					<div className="flex items-center justify-between">
-						<span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+						<span className="text-sm font-semibold text-black dark:text-white">
 							Reactions
 						</span>
-						<span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+						<span className="text-xs text-gray-600 dark:text-gray-400 font-medium">
 							{totalReactions} {totalReactions === 1 ? 'total' : 'total'}
 						</span>
 					</div>
@@ -108,13 +104,13 @@ function ReactionTooltip({ reactions, currentUserId, children }) {
 								<div
 									key={`${item.user?._id || index}-${index}`}
 									className={`flex items-center gap-3 px-2 py-2 rounded-md transition-colors ${isCurrentUser
-										? 'bg-blue-50 dark:bg-blue-900/20'
-										: 'hover:bg-gray-100 dark:hover:bg-gray-800'
+										? 'bg-gray-100 dark:bg-gray-800'
+										: 'hover:bg-gray-50 dark:hover:bg-gray-900'
 										}`}
 								>
 									<Avatar className="h-8 w-8 flex-shrink-0">
 										<AvatarImage src={item.user?.image || item.user?.avatar} />
-										<AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs">
+										<AvatarFallback className="bg-black dark:bg-white text-white dark:text-black text-xs">
 											{getInitials(item.user)}
 										</AvatarFallback>
 									</Avatar>
@@ -122,7 +118,7 @@ function ReactionTooltip({ reactions, currentUserId, children }) {
 									<div className="flex-1 min-w-0">
 										<div className="flex items-center justify-between">
 											<p className={`text-sm font-medium truncate ${isCurrentUser
-												? 'text-blue-600 dark:text-blue-400'
+												? 'text-black dark:text-white font-semibold'
 												: 'text-gray-900 dark:text-gray-100'
 												}`}>
 												{isCurrentUser ? 'You' : getUserDisplayName(item.user)}
