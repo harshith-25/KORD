@@ -1,11 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { CheckCheck, X } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
-import {
-	Popover,
-	PopoverContent,
-	PopoverAnchor,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverAnchor } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getInitials } from '@/utils/helpers';
@@ -116,7 +112,7 @@ const MessageInfoPopover = ({ message, isOpen, onOpenChange, anchorRef }) => {
 										<div className="flex items-center justify-between">
 											<div className="flex items-center gap-2">
 												<CheckCheck className="h-4 w-4 text-gray-400" />
-												<span className="text-sm text-gray-700 dark:text-gray-300">Delivered</span>
+												<span className="text-sm text-gray-700 dark:text-gray-300">Delivered &nbsp;</span>
 											</div>
 											<span className="text-sm text-gray-500 dark:text-gray-400">
 												{formatTime(info.deliveredAt)}
