@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { CheckCheck, X } from 'lucide-react';
+import { CheckCheck } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { Popover, PopoverContent, PopoverAnchor } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";

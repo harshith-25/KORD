@@ -1098,13 +1098,43 @@ export const getMessageInfo = asyncHandler(async (req, res) => {
   let globalDeliveredAt = null;
   let globalReadAt = null;
 
-  if (deliveryReceipts.length > 0) {
-    globalDeliveredAt = deliveryReceipts.reduce((earliest, receipt) => {
-      const current = new Date(receipt.deliveredAt);
-      return !earliest || current < new Date(earliest) ? receipt.deliveredAt : earliest;
+  // For deliveredAt, we need ALL users who have either delivered OR read
+  // Build a complete list of delivery timestamps
+  const allDeliveryTimestamps = [];
+  const userIdsWithDelivery = new Set();
+  
+  // Add explicit delivery receipts
+  deliveryReceipts.forEach(receipt => {
+    if (receipt.deliveredAt) {
+      allDeliveryTimestamps.push(receipt.deliveredAt);
+      userIdsWithDelivery.add(receipt.user._id.toString());
+    }
+  });
+  
+  // For users who have READ but don't have an explicit delivery receipt,
+  // we need to find their delivery timestamp from the original message
+  readReceipts.forEach(receipt => {
+    const userId = receipt.user._id.toString();
+    if (!userIdsWithDelivery.has(userId)) {
+      // Check if this user has a delivery receipt in the original message
+      const originalDeliveryReceipt = (message.deliveryReceipts || []).find(
+        dr => dr.user._id.toString() === userId
+      );
+      if (originalDeliveryReceipt && originalDeliveryReceipt.deliveredAt) {
+        allDeliveryTimestamps.push(originalDeliveryReceipt.deliveredAt);
+      }
+    }
+  });
+  
+  // Use the EARLIEST timestamp as globalDeliveredAt
+  if (allDeliveryTimestamps.length > 0) {
+    globalDeliveredAt = allDeliveryTimestamps.reduce((earliest, timestamp) => {
+      const current = new Date(timestamp);
+      return !earliest || current < new Date(earliest) ? timestamp : earliest;
     }, null);
   }
 
+  // For readAt, use the LATEST read time (when the last person read it)
   if (readReceipts.length > 0) {
     globalReadAt = readReceipts.reduce((latest, receipt) => {
       const current = new Date(receipt.readAt);
