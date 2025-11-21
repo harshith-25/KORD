@@ -1153,7 +1153,7 @@ export const useMessageStore = create(
           set((state) => {
             const newReaction = {
               emoji,
-              user: currentUser._id,
+              user: currentUser, // Use full user object
               reactedAt: new Date().toISOString(),
             };
 

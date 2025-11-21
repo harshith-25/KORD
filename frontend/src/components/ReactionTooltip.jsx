@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
 	Popover,
 	PopoverContent,
@@ -156,4 +156,4 @@ function ReactionTooltip({ reactions, currentUserId, children }) {
 	);
 }
 
-export default ReactionTooltip;
+export default memo(ReactionTooltip);
