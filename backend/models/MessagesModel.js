@@ -1,10 +1,10 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
 
-// Define a schema for reactions
+// Define a schema for reactions - supports multiple emojis per user
 const reactionSchema = mongoose.Schema(
   {
-    emoji: { type: String, required: true },
+    emojis: [{ type: String, required: true }], // Array of emoji strings
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -15,6 +15,9 @@ const reactionSchema = mongoose.Schema(
   },
   { _id: false }
 );
+
+// Maximum reactions allowed per user
+const MAX_REACTIONS_PER_USER = 5;
 
 // Define delivery receipt schema for tracking when message reaches recipient's device
 const deliveryReceiptSchema = mongoose.Schema(
@@ -399,14 +402,13 @@ messageSchema.statics.findConversationMessages = async function (
         editedAt: 1,
         isDeleted: 1,
         deletedFor: 1,
-        reactions: 1,
-        // Find this section in the $project stage (around line 350-420)
+        reactions: 1, // Pass reactions through, will populate after
         replyTo: {
           $cond: {
             if: { $ifNull: ["$replyToDetails._id", false] },
             then: {
               _id: "$replyToDetails._id",
-              messageId: "$replyToDetails._id", // ADD THIS LINE
+              messageId: "$replyToDetails._id",
               content: {
                 $cond: {
                   if: { $eq: ["$replyToDetails.isDeleted", true] },
@@ -461,7 +463,6 @@ messageSchema.statics.findConversationMessages = async function (
                 },
               },
               senderName: {
-                // ADD THIS ENTIRE BLOCK
                 $cond: {
                   if: { $ifNull: ["$replyToSenderDetails._id", false] },
                   then: {
@@ -484,7 +485,7 @@ messageSchema.statics.findConversationMessages = async function (
                   },
                 },
               },
-              createdAt: "$replyToDetails.createdAt", // ADD THIS LINE
+              createdAt: "$replyToDetails.createdAt",
               isDeleted: {
                 $or: [
                   { $eq: ["$replyToDetails.isDeleted", true] },
@@ -530,6 +531,23 @@ messageSchema.statics.findConversationMessages = async function (
       },
     },
   ]);
+
+  // Populate reactions using Mongoose populate
+  await this.populate(result, {
+    path: "reactions.user",
+    select: "name username firstName lastName avatar image",
+  });
+
+  // Normalize emojis for backward compatibility (handle legacy 'emoji' field)
+  result.forEach((msg) => {
+    if (msg.reactions && Array.isArray(msg.reactions)) {
+      msg.reactions.forEach((r) => {
+        if ((!r.emojis || r.emojis.length === 0) && r.emoji) {
+          r.emojis = [r.emoji];
+        }
+      });
+    }
+  });
 
   return result.reverse(); // Return in chronological order
 };
@@ -655,30 +673,69 @@ messageSchema.methods.markAsRead = function (userId, deviceInfo = null) {
   return this.save();
 };
 
-// Instance method to add reaction
+// Instance method to add/toggle reaction
 messageSchema.methods.addReaction = function (userId, emoji) {
-  const existingReactionIndex = this.reactions.findIndex(
+  const userReactionIndex = this.reactions.findIndex(
     (r) => r.user.toString() === userId.toString()
   );
 
-  if (existingReactionIndex !== -1) {
-    this.reactions[existingReactionIndex].emoji = emoji;
-    this.reactions[existingReactionIndex].reactedAt = new Date();
+  if (userReactionIndex !== -1) {
+    // User already has reactions
+    const userReaction = this.reactions[userReactionIndex];
+    const emojiIndex = userReaction.emojis.indexOf(emoji);
+
+    if (emojiIndex !== -1) {
+      // Emoji exists, remove it (toggle off)
+      userReaction.emojis.splice(emojiIndex, 1);
+      
+      // If no emojis left, remove the entire reaction entry
+      if (userReaction.emojis.length === 0) {
+        this.reactions.splice(userReactionIndex, 1);
+      } else {
+        userReaction.reactedAt = new Date();
+      }
+    } else {
+      // Emoji doesn't exist, add it if under limit
+      if (userReaction.emojis.length >= MAX_REACTIONS_PER_USER) {
+        const error = new Error(`Maximum ${MAX_REACTIONS_PER_USER} reactions allowed per user`);
+        error.code = 'REACTION_LIMIT_EXCEEDED';
+        throw error;
+      }
+      userReaction.emojis.push(emoji);
+      userReaction.reactedAt = new Date();
+    }
   } else {
+    // User has no reactions yet, add first one
     this.reactions.push({
       user: userId,
-      emoji,
+      emojis: [emoji],
       reactedAt: new Date(),
     });
   }
   return this.save();
 };
 
-// Instance method to remove reaction
+// Instance method to remove specific reaction
 messageSchema.methods.removeReaction = function (userId, emoji) {
-  this.reactions = this.reactions.filter(
-    (r) => !(r.user.toString() === userId.toString() && r.emoji === emoji)
+  const userReactionIndex = this.reactions.findIndex(
+    (r) => r.user.toString() === userId.toString()
   );
+
+  if (userReactionIndex !== -1) {
+    const userReaction = this.reactions[userReactionIndex];
+    const emojiIndex = userReaction.emojis.indexOf(emoji);
+
+    if (emojiIndex !== -1) {
+      userReaction.emojis.splice(emojiIndex, 1);
+      
+      // If no emojis left, remove the entire reaction entry
+      if (userReaction.emojis.length === 0) {
+        this.reactions.splice(userReactionIndex, 1);
+      } else {
+        userReaction.reactedAt = new Date();
+      }
+    }
+  }
   return this.save();
 };
 

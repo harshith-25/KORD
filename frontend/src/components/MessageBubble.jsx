@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { MoreVertical, Check, CheckCheck, Clock, AlertCircle, Reply, Edit2, Copy, Forward, Trash2, Info, Smile } from 'lucide-react';
 import { formatTimeSafe } from '@/utils/helpers';
 import QuickReactions from './QuickReactions';
+import ReactionTooltip from './ReactionTooltip';
 
 function MessageBubble({
 	message,
@@ -74,14 +75,19 @@ function MessageBubble({
 		}
 	};
 
-	// Get user reactions
-	const myReactions = (message.reactions || []).filter(
+	// Get user reactions - now supports multiple emojis per user
+	const myReactions = (message.reactions || []).find(
 		r => (r.user?._id || r.user)?.toString() === currentUser?._id?.toString()
 	);
 
 	const hasReacted = (emoji) => {
-		return myReactions.some(r => r.emoji === emoji);
+		if (!myReactions || !myReactions.emojis) return false;
+		return myReactions.emojis.includes(emoji);
 	};
+
+	// Get count of user's reactions
+	const myReactionCount = myReactions?.emojis?.length || 0;
+	const MAX_REACTIONS = 5;
 
 	// Status icon component - WhatsApp-like read receipts
 	const StatusIcon = () => {
@@ -404,26 +410,63 @@ function MessageBubble({
 						<StatusIcon />
 					</div>
 
-					{/* Reactions display */}
-					{message.reactions && message.reactions.length > 0 && (
-						<div className="absolute -bottom-3 right-2 flex gap-1">
-							{Object.entries(
-								message.reactions.reduce((acc, r) => {
-									acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-									return acc;
-								}, {})
-							).map(([emoji, count]) => (
-								<div
-									key={emoji}
-									className="bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full px-1.5 py-0.5 text-xs flex items-center gap-0.5 shadow-sm cursor-pointer hover:scale-110 transition-transform"
-									onClick={() => onReaction?.(messageId, emoji, hasReacted(emoji))}
-								>
-									<span>{emoji}</span>
-									{count > 1 && <span className="text-gray-600 dark:text-gray-400">{count}</span>}
+					{/* Reactions display with tooltips - UNIFIED IMPLEMENTATION */}
+					{!isDeleted && message.reactions && message.reactions.length > 0 && (() => {
+						// Group reactions by emoji across all users
+						const reactionGroups = {};
+						message.reactions.forEach(reaction => {
+							if (reaction.emojis && Array.isArray(reaction.emojis)) {
+								reaction.emojis.forEach(emoji => {
+									if (!reactionGroups[emoji]) {
+										reactionGroups[emoji] = [];
+									}
+									reactionGroups[emoji].push({
+										user: reaction.user,
+										reactedAt: reaction.reactedAt
+									});
+								});
+							}
+						});
+
+						if (Object.keys(reactionGroups).length === 0) return null;
+
+						return (
+							<ReactionTooltip
+								reactions={message.reactions}
+								currentUserId={currentUser?._id}
+							>
+								<div className="absolute -bottom-3 right-2 flex gap-1">
+									{Object.entries(reactionGroups).map(([emoji, users]) => {
+										const hasCurrentUserReacted = users.some(
+											(item) => (item.user?._id || item.user)?.toString() === currentUser?._id?.toString()
+										);
+
+										return (
+											<button
+												key={emoji}
+												onClick={(e) => {
+													e.stopPropagation();
+													onReaction?.(messageId, emoji, hasCurrentUserReacted);
+												}}
+												className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-all hover:scale-110 shadow-sm ${hasCurrentUserReacted
+														? 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700'
+														: 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+													}`}
+												title={`${users.length} ${users.length === 1 ? 'reaction' : 'reactions'}`}
+											>
+												<span>{emoji}</span>
+												{users.length > 1 && (
+													<span className="text-gray-600 dark:text-gray-400 font-medium">
+														{users.length}
+													</span>
+												)}
+											</button>
+										);
+									})}
 								</div>
-							))}
-						</div>
-					)}
+							</ReactionTooltip>
+						);
+					})()}
 
 					{/* Retry button for failed messages */}
 					{status === 'failed' && isSentByMe && (

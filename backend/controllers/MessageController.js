@@ -682,7 +682,10 @@ export const addReaction = asyncHandler(async (req, res) => {
     await message.addReaction(currentUserId, emoji);
 
     // Reload to get updated reactions
-    const updatedMessage = await Message.findById(messageId);
+    const updatedMessage = await Message.findById(messageId).populate(
+      "reactions.user",
+      "name username firstName lastName avatar image"
+    );
 
     const io = getIo();
     io.to(message.conversationId).emit("message_reaction", {
@@ -725,7 +728,10 @@ export const removeReaction = asyncHandler(async (req, res) => {
     await message.removeReaction(currentUserId, emoji);
 
     // Reload to get updated reactions
-    const updatedMessage = await Message.findById(messageId);
+    const updatedMessage = await Message.findById(messageId).populate(
+      "reactions.user",
+      "name username firstName lastName avatar image"
+    );
 
     const io = getIo();
     io.to(message.conversationId).emit("message_reaction", {
