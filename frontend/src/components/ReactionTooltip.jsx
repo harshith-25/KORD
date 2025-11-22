@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, useRef } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8,10 +8,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
  * @param {Object} props
  * @param {Array} props.reactions - Array of reaction objects from the message
  * @param {string} props.currentUserId - ID of the current user for highlighting
+ * @param {boolean} props.isMobile - Whether the device is mobile (for touch interactions)
  * @param {React.ReactNode} props.children - Trigger element (reaction badge container)
  */
-function ReactionTooltip({ reactions, currentUserId, children }) {
+function ReactionTooltip({ reactions, currentUserId, isMobile, children }) {
 	const [open, setOpen] = useState(false);
+	const [longPressTriggered, setLongPressTriggered] = useState(false);
+	const longPressTimer = useRef(null);
 
 	if (!reactions || reactions.length === 0) {
 		return children;
@@ -65,12 +68,63 @@ function ReactionTooltip({ reactions, currentUserId, children }) {
 		return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 	};
 
+	// Touch event handlers for mobile long-press
+	const handleTouchStart = (e) => {
+		if (!isMobile) return;
+
+		longPressTimer.current = setTimeout(() => {
+			setOpen(true);
+			setLongPressTriggered(true);
+		}, 500);
+	};
+
+	const handleTouchEnd = (e) => {
+		if (!isMobile) return;
+
+		// Clear the timer if user releases before 500ms
+		if (longPressTimer.current) {
+			clearTimeout(longPressTimer.current);
+		}
+
+		// If tooltip was shown via long-press, prevent click from toggling reaction
+		if (longPressTriggered) {
+			e.preventDefault();
+			e.stopPropagation();
+			setLongPressTriggered(false);
+			// Close tooltip after a brief delay
+			setTimeout(() => setOpen(false), 2000);
+		}
+	};
+
+	const handleTouchMove = () => {
+		// Cancel long-press if user scrolls
+		if (longPressTimer.current) {
+			clearTimeout(longPressTimer.current);
+		}
+	};
+
+	// Mouse event handlers for desktop hover
+	const handleMouseEnter = () => {
+		if (!isMobile) {
+			setOpen(true);
+		}
+	};
+
+	const handleMouseLeave = () => {
+		if (!isMobile) {
+			setOpen(false);
+		}
+	};
+
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<div
-					onMouseEnter={() => setOpen(true)}
-					onMouseLeave={() => setOpen(false)}
+					onMouseEnter={handleMouseEnter}
+					onMouseLeave={handleMouseLeave}
+					onTouchStart={handleTouchStart}
+					onTouchEnd={handleTouchEnd}
+					onTouchMove={handleTouchMove}
 					className="cursor-pointer"
 				>
 					{children}
@@ -81,8 +135,8 @@ function ReactionTooltip({ reactions, currentUserId, children }) {
 				side="top"
 				align="center"
 				sideOffset={8}
-				onMouseEnter={() => setOpen(true)}
-				onMouseLeave={() => setOpen(false)}
+				onMouseEnter={handleMouseEnter}
+				onMouseLeave={handleMouseLeave}
 			>
 				<div className="p-3 border-b border-gray-300 dark:border-gray-700 bg-white dark:bg-black rounded-t-md">
 					<div className="flex items-center justify-between">

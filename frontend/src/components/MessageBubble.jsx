@@ -434,6 +434,7 @@ function MessageBubble({
 							<ReactionTooltip
 								reactions={message.reactions}
 								currentUserId={currentUser?._id}
+								isMobile={isMobile}
 							>
 								<div className="absolute -bottom-3 right-2 flex gap-1">
 									{Object.entries(reactionGroups).map(([emoji, users]) => {
