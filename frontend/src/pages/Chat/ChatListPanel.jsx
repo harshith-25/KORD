@@ -243,6 +243,7 @@ const ChatListPanel = ({
 				activeFilter={activeFilter}
 				setActiveFilter={setActiveFilter}
 				contacts={contacts}
+				isMobile={isMobile}
 			/>
 
 			{/* Pull to refresh indicator */}
