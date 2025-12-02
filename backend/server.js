@@ -57,7 +57,7 @@ app.use(helmet());
 // 2. CORS: Cross-Origin Resource Sharing
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN,            // allow only your frontend
+    origin: [process.env.CORS_ORIGIN, "http://localhost:5173", "http://localhost:3000"],            // allow only your frontend
     methods: ["GET","POST","PUT","DELETE","OPTIONS"],
     allowedHeaders: ["Content-Type","Authorization","X-Requested-With","Accept"],
     credentials: true,                // if you use cookies / credentials

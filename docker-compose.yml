@@ -2,7 +2,7 @@ name: kord-chat
 
 services:
   mongo:
-    image: mongo:7.0.12
+    image: mongo:latest
     container_name: kord-mongodb
     volumes:
       - mongo_data:/data/db
