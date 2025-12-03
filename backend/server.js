@@ -31,7 +31,7 @@ import whiteboardRoutes from "./routes/whiteboardRoutes.js";
 import friendRoutes from "./routes/friendRoutes.js";
 
 // Import specific controllers to pass io instance
-import { setFriendControllerIo } from "./controllers/friendController.js";
+import { setFriendControllerIo } from "./controllers/FriendRelationController.js";
 
 dotenv.config();
 
