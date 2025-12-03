@@ -4,8 +4,4 @@ node_modules
 
 .gitignore
 
-package-lock.json
-
-Dockerfile
-
 README.md
