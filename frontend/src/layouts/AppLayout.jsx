@@ -222,15 +222,17 @@ const AppLayout = ({ children }) => {
 				}}
 			>
 				{/* Mobile Content - headers are handled by chat list / chat panels themselves (WhatsApp-style) */}
-				<div className="flex-1 flex flex-col safe-area-bottom">
+				<div className="flex-1 flex flex-col h-full overflow-hidden">
 					{/* Chat List or Main Content */}
 					{showChatList ? (
-						<ChatListPanel
-							isMobile={true}
-							onChatSelect={handleMobileChatSelect}
-						/>
+						<div className="flex-1 flex flex-col h-full overflow-hidden">
+							<ChatListPanel
+								isMobile={true}
+								onChatSelect={handleMobileChatSelect}
+							/>
+						</div>
 					) : (
-						<main className="flex-1 flex flex-col bg-white dark:bg-gray-800 min-w-0 overflow-hidden">
+						<main className="flex-1 flex flex-col bg-white dark:bg-gray-800 h-full overflow-hidden">
 							{children}
 						</main>
 					)}
@@ -241,12 +243,12 @@ const AppLayout = ({ children }) => {
 
 	// Desktop/Tablet Layout
 	return (
-		<div className="flex h-screen overflow-hidden bg-gray-100 dark:bg-gray-900 relative">
+		<div className="flex h-screen overflow-hidden bg-gray-100 dark:bg-gray-900">
 			{/* Global Navigation Sidebar - Fixed */}
 			<GlobalSidebar />
 
 			{/* Content Container - Offset by 65px for collapsed sidebar */}
-			<div className="flex-1 flex ml-[65px] h-full">
+			<div className="flex-1 flex ml-[65px] h-full overflow-hidden">
 				{/* Chat List Panel - Resizable on desktop/tablet */}
 				<div
 					style={{
@@ -254,7 +256,7 @@ const AppLayout = ({ children }) => {
 						minWidth: isTablet ? '320px' : `${MIN_PANEL_WIDTH}px`,
 						maxWidth: isTablet ? '320px' : `${MAX_PANEL_WIDTH}px`
 					}}
-					className={`flex-shrink-0 flex flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 min-w-0 ${!isResizing ? 'transition-none' : ''
+					className={`flex-shrink-0 flex flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 h-full overflow-hidden ${!isResizing ? 'transition-none' : ''
 						} ${isTablet ? 'tablet-panel' : ''}`}
 				>
 					<ChatListPanel />
@@ -263,13 +265,14 @@ const AppLayout = ({ children }) => {
 				{/* Resizer Handle - Desktop only */}
 				{!isTablet && (
 					<div
-						className={`w-0.5 bg-gray-300 dark:bg-gray-600 cursor-ew-resize hover:bg-purple-500 dark:hover:bg-purple-400 transition-colors duration-150 flex-shrink-0 relative ${isResizing ? 'bg-purple-500 dark:bg-purple-400' : ''}`}
+						className={`w-0.5 bg-gray-300 dark:bg-gray-600 cursor-ew-resize hover:bg-purple-500 dark:hover:bg-purple-400 transition-colors duration-150 flex-shrink-0 relative ${isResizing ? 'bg-purple-500 dark:bg-purple-400' : ''
+							}`}
 						onMouseDown={handleMouseDown}
 						title="Drag to resize chat panel"
 					>
-						{/* Miniscus/handle in the center */}
+						{/* Handle in the center */}
 						<div
-							className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.75 h-6 bg-green-500 z-1 dark:bg-green-100 rounded-full opacity-70"
+							className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-6 bg-gray-500 dark:bg-gray-400 rounded-full opacity-70 pointer-events-none"
 							style={{
 								boxShadow: '0 0 2px 0.5px rgba(0,0,0,0.08)',
 							}}
@@ -278,7 +281,7 @@ const AppLayout = ({ children }) => {
 				)}
 
 				{/* Main Content Area */}
-				<main className="flex-1 flex flex-col bg-white dark:bg-gray-800 min-w-0 overflow-hidden">
+				<main className="flex-1 flex flex-col bg-white dark:bg-gray-800 h-full overflow-hidden">
 					{children}
 				</main>
 			</div>

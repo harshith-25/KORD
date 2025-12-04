@@ -16,7 +16,6 @@ const slugs = [
 	"shadcnui",
 	"tailwindCSS",
 	"docker",
-	"amazonwebservices",
 	"betterauth",
 	"git",
 	"github",
