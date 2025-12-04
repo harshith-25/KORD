@@ -277,6 +277,68 @@ function ChatMainPanel() {
 		return <NoChatSelectedPlaceholder />;
 	}
 
+	// WhatsApp-style mobile layout: Fixed header, scrollable messages, fixed input
+	if (isMobile) {
+		return (
+			<div className="flex flex-col h-full overflow-hidden">
+				{/* Fixed Header */}
+				<div className="flex-shrink-0">
+					<ChatHeader
+						selectedChat={selectedChat}
+						chatName={chatName}
+						chatAvatar={chatAvatar}
+						isUserOnline={isUserOnline}
+						isGroupChat={isGroupChat}
+						isTyping={isTyping}
+						isMobile={isMobile}
+					/>
+				</div>
+
+				{/* Scrollable Messages Area */}
+				<div className="flex-1 overflow-hidden">
+					<ChatMessagesPanel
+						currentMessages={currentMessages}
+						currentUser={currentUser}
+						selectedChat={selectedChat}
+						contacts={contacts}
+						isGroupChat={isGroupChat}
+						loadingMessages={loadingMessages}
+						messagesContainerRef={messagesContainerRef}
+						messagesEndRef={messagesEndRef}
+						handleScroll={handleScroll}
+						scrollToBottom={scrollToBottom}
+						showScrollButton={showScrollButton}
+						isTyping={isTyping}
+						typingText={typingText}
+						isMobile={isMobile}
+						onEditMessage={handleEditMessage}
+						onReplyMessage={handleReplyMessage}
+						editingMessage={editingMessage}
+						replyingTo={replyingTo}
+					/>
+				</div>
+
+				{/* Fixed Input Area */}
+				<div className="flex-shrink-0">
+					<ChatMessageInput
+						messageInput={messageInput}
+						setMessageInput={setMessageInput}
+						handleSendMessage={handleSendMessage}
+						inputRef={inputRef}
+						showEmojiPicker={showEmojiPicker}
+						setShowEmojiPicker={setShowEmojiPicker}
+						conversationId={selectedChat?.conversationId}
+						editingMessage={editingMessage}
+						setEditingMessage={setEditingMessage}
+						replyingTo={replyingTo}
+						setReplyingTo={setReplyingTo}
+					/>
+				</div>
+			</div>
+		);
+	}
+
+	// Desktop layout: normal flex layout
 	return (
 		<div className="flex-1 flex flex-col h-full relative">
 			<ChatHeader
