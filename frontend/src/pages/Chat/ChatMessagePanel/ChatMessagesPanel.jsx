@@ -422,170 +422,167 @@ function ChatMessagesPanel({
 
 	return (
 		<>
-			<div className="flex-1 flex flex-col min-h-0">
-				<div
-					ref={messagesContainerRef}
-					onScroll={handleScroll}
-					className={`flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 bg-gray-50 dark:bg-gray-900 ${isMobile ? 'pb-6' : ''}`}
-					style={{
-						backgroundImage: isMobile ? 'none' : `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f0f0f0' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-						minHeight: '0',
-						maxHeight: '100%'
-					}}
-				>
-					{loadingMessages ? (
-						<div className="flex flex-col items-center justify-center h-full min-h-32">
-							<Loader2 className="w-8 h-8 animate-spin mb-2 text-gray-400" />
-							<p className="text-gray-500 dark:text-gray-400">Loading messages...</p>
-						</div>
-					) : currentMessages.length === 0 ? (
-						<div className="flex items-center justify-center h-full min-h-32">
-							<p className="text-gray-500 dark:text-gray-400">No messages yet. Say hello!</p>
-						</div>
-					) : (
-						<div className="space-y-1 pb-4">
-							{showLoadMoreButton && hasMore && (
-								<div className="flex justify-center py-2" ref={topObserverRef}>
-									<Button
-										onClick={handleLoadMore}
-										disabled={isLoadingMore}
-										variant="outline"
-										size="sm"
-										className="gap-2"
-									>
-										{isLoadingMore ? (
-											<>
-												<Loader2 className="h-4 w-4 animate-spin" />
-												Loading...
-											</>
-										) : (
-											<>
-												<ArrowUp className="h-4 w-4" />
-												Load Older Messages
-												{paginationInfo && (
-													<span className="text-xs text-gray-500">
-														({paginationInfo.page}/{paginationInfo.totalPages})
-													</span>
-												)}
-											</>
-										)}
-									</Button>
-								</div>
-							)}
-
-							{isLoadingMore && !showLoadMoreButton && (
-								<div className="flex justify-center py-2">
-									<Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-								</div>
-							)}
-
-							{/* Loading indicator when searching for a message */}
-							{isSearchingMessage && (
-								<div className="flex justify-center py-2">
-									<div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-full flex items-center gap-2">
-										<Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-										<span className="text-sm text-blue-600 dark:text-blue-400">Searching for message...</span>
-									</div>
-								</div>
-							)}
-
-							{currentMessages.map((message, index) => {
-								if (!isValidMessage(message, index)) return null;
-
-								const prevMessage = currentMessages[index - 1];
-								const nextMessage = currentMessages[index + 1];
-
-								const isGrouped = shouldGroupMessage(message, prevMessage);
-								const isLastInGroup = !shouldGroupMessage(nextMessage, message);
-
-								const showDate = !prevMessage || !isSameDaySafe(
-									message.time || message.createdAt,
-									prevMessage.time || prevMessage.createdAt
-								);
-
-								// Check if this message is being edited
-								const isBeingEdited = editingMessage?._id === message._id || editingMessage?.id === message.id;
-
-								// Check if this message is highlighted
-								const isHighlighted = highlightedMessageId === (message._id || message.id);
-
-								return (
-									<React.Fragment key={message.messageId || message.id || message._id || `message-${index}`}>
-										{showDate && (message.time || message.createdAt) && (
-											<div className="flex justify-center my-4">
-												<span className="px-3 py-1 bg-white dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
-													{formatDateSeparator(message.time || message.createdAt)}
+			{/* Messages Container - This is the ONLY scrollable element */}
+			<div
+				ref={messagesContainerRef}
+				onScroll={handleScroll}
+				className={`h-full w-full overflow-y-auto overflow-x-hidden p-2 sm:p-4 bg-gray-50 dark:bg-gray-900 ${isMobile ? 'pb-6' : ''}`}
+				style={{
+					backgroundImage: isMobile ? 'none' : `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f0f0f0' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+				}}
+			>
+				{loadingMessages ? (
+					<div className="flex flex-col items-center justify-center h-full min-h-[200px]">
+						<Loader2 className="w-8 h-8 animate-spin mb-2 text-gray-400" />
+						<p className="text-gray-500 dark:text-gray-400">Loading messages...</p>
+					</div>
+				) : currentMessages.length === 0 ? (
+					<div className="flex items-center justify-center h-full min-h-[200px]">
+						<p className="text-gray-500 dark:text-gray-400">No messages yet. Say hello!</p>
+					</div>
+				) : (
+					<div className="space-y-1 pb-4">
+						{showLoadMoreButton && hasMore && (
+							<div className="flex justify-center py-2" ref={topObserverRef}>
+								<Button
+									onClick={handleLoadMore}
+									disabled={isLoadingMore}
+									variant="outline"
+									size="sm"
+									className="gap-2"
+								>
+									{isLoadingMore ? (
+										<>
+											<Loader2 className="h-4 w-4 animate-spin" />
+											Loading...
+										</>
+									) : (
+										<>
+											<ArrowUp className="h-4 w-4" />
+											Load Older Messages
+											{paginationInfo && (
+												<span className="text-xs text-gray-500">
+													({paginationInfo.page}/{paginationInfo.totalPages})
 												</span>
-											</div>
-										)}
+											)}
+										</>
+									)}
+								</Button>
+							</div>
+						)}
 
-										{renderSenderName(message, isGrouped)}
+						{isLoadingMore && !showLoadMoreButton && (
+							<div className="flex justify-center py-2">
+								<Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+							</div>
+						)}
 
-										<div
-											className={isGrouped ? 'mt-1' : 'mt-2'}
-											ref={(el) => {
-												if (el) {
-													messageRefs.current[message._id || message.id] = el;
-												}
-											}}
-										>
-											<MessageBubble
-												message={message}
-												currentUser={currentUser}
-												isGroupChat={isGroupChat}
-												isLastInGroup={isLastInGroup}
-												selectedChat={selectedChat}
-												contacts={contacts}
-												onReply={handleReply}
-												onEdit={handleEdit}
-												onDelete={handleDelete}
-												onForward={handleForward}
-												onCopy={handleCopy}
-												onReaction={handleReaction}
-												onInfo={handleInfo}
-												onRetry={handleRetry}
-												onLongPress={handleLongPress}
-												isMobile={isMobile}
-												isBeingEdited={isBeingEdited}
-												isHighlighted={isHighlighted}
-												onScrollToReply={scrollToMessage}
-											/>
-										</div>
-									</React.Fragment>
-								);
-							})}
-
-							{/* Typing Indicator */}
-							{isTyping && typingText && (
-								<div ref={typingIndicatorRef} className="flex justify-start mt-2">
-									{isGroupChat && <div className="w-8 h-8 mr-2 flex-shrink-0" />}
-									<div className="flex items-center bg-white dark:bg-gray-800 rounded-2xl rounded-bl-md px-3 py-2.5 shadow-sm border border-gray-100 dark:border-gray-700 max-w-[75%] sm:max-w-[65%]">
-										<div className="flex space-x-1 mr-2.5">
-											{[0, 150, 300].map((delay) => (
-												<div
-													key={delay}
-													className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full animate-bounce"
-													style={{ animationDelay: `${delay}ms`, animationDuration: '0.8s' }}
-												/>
-											))}
-										</div>
-										<span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-											{typingText}
-										</span>
-									</div>
+						{/* Loading indicator when searching for a message */}
+						{isSearchingMessage && (
+							<div className="flex justify-center py-2">
+								<div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-full flex items-center gap-2">
+									<Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+									<span className="text-sm text-blue-600 dark:text-blue-400">Searching for message...</span>
 								</div>
-							)}
+							</div>
+						)}
 
-							<div ref={messagesEndRef} />
-						</div>
-					)}
-				</div>
+						{currentMessages.map((message, index) => {
+							if (!isValidMessage(message, index)) return null;
 
-				{/* Scroll to bottom button */}
+							const prevMessage = currentMessages[index - 1];
+							const nextMessage = currentMessages[index + 1];
+
+							const isGrouped = shouldGroupMessage(message, prevMessage);
+							const isLastInGroup = !shouldGroupMessage(nextMessage, message);
+
+							const showDate = !prevMessage || !isSameDaySafe(
+								message.time || message.createdAt,
+								prevMessage.time || prevMessage.createdAt
+							);
+
+							// Check if this message is being edited
+							const isBeingEdited = editingMessage?._id === message._id || editingMessage?.id === message.id;
+
+							// Check if this message is highlighted
+							const isHighlighted = highlightedMessageId === (message._id || message.id);
+
+							return (
+								<React.Fragment key={message.messageId || message.id || message._id || `message-${index}`}>
+									{showDate && (message.time || message.createdAt) && (
+										<div className="flex justify-center my-4">
+											<span className="px-3 py-1 bg-white dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+												{formatDateSeparator(message.time || message.createdAt)}
+											</span>
+										</div>
+									)}
+
+									{renderSenderName(message, isGrouped)}
+
+									<div
+										className={isGrouped ? 'mt-1' : 'mt-2'}
+										ref={(el) => {
+											if (el) {
+												messageRefs.current[message._id || message.id] = el;
+											}
+										}}
+									>
+										<MessageBubble
+											message={message}
+											currentUser={currentUser}
+											isGroupChat={isGroupChat}
+											isLastInGroup={isLastInGroup}
+											selectedChat={selectedChat}
+											contacts={contacts}
+											onReply={handleReply}
+											onEdit={handleEdit}
+											onDelete={handleDelete}
+											onForward={handleForward}
+											onCopy={handleCopy}
+											onReaction={handleReaction}
+											onInfo={handleInfo}
+											onRetry={handleRetry}
+											onLongPress={handleLongPress}
+											isMobile={isMobile}
+											isBeingEdited={isBeingEdited}
+											isHighlighted={isHighlighted}
+											onScrollToReply={scrollToMessage}
+										/>
+									</div>
+								</React.Fragment>
+							);
+						})}
+
+						{/* Typing Indicator */}
+						{isTyping && typingText && (
+							<div ref={typingIndicatorRef} className="flex justify-start mt-2">
+								{isGroupChat && <div className="w-8 h-8 mr-2 flex-shrink-0" />}
+								<div className="flex items-center bg-white dark:bg-gray-800 rounded-2xl rounded-bl-md px-3 py-2.5 shadow-sm border border-gray-100 dark:border-gray-700 max-w-[75%] sm:max-w-[65%]">
+									<div className="flex space-x-1 mr-2.5">
+										{[0, 150, 300].map((delay) => (
+											<div
+												key={delay}
+												className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full animate-bounce"
+												style={{ animationDelay: `${delay}ms`, animationDuration: '0.8s' }}
+											/>
+										))}
+									</div>
+									<span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+										{typingText}
+									</span>
+								</div>
+							</div>
+						)}
+
+						<div ref={messagesEndRef} />
+					</div>
+				)}
+
+				{/* Scroll to bottom button - positioned relative to the scrollable container */}
 				{showScrollButton && (
 					<button
 						onClick={() => scrollToBottom('smooth')}
-						className={`absolute z-10 w-12 h-12 bg-white dark:bg-gray-700 shadow-lg rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-600 hover:shadow-xl transform hover:scale-105 transition-all duration-200 ${isMobile ? 'bottom-20' : 'bottom-22'} left-1/2 -translate-x-1/2`}
+						className={`fixed z-10 w-12 h-12 bg-white dark:bg-gray-700 shadow-lg rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-600 hover:shadow-xl transform hover:scale-105 transition-all duration-200 ${isMobile ? 'bottom-24' : 'bottom-28'} left-1/2 -translate-x-1/2`}
 						aria-label="Scroll to bottom"
 					>
 						<ArrowDown className="h-6 w-6 text-gray-600 dark:text-gray-300" />
