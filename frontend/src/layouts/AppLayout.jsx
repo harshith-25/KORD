@@ -6,12 +6,6 @@ import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import { useConversationStore } from '@/store/conversationStore';
 import { useMessageStore } from '@/store/messageStore';
-import { ArrowLeft, Menu, X } from 'lucide-react';
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 // Breakpoints
 const BREAKPOINTS = {
@@ -24,7 +18,6 @@ const BREAKPOINTS = {
 const MIN_PANEL_WIDTH = 300;
 const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 350;
-const MOBILE_PANEL_WIDTH = '100vw';
 
 const AppLayout = ({ children }) => {
 	const navigate = useNavigate();
@@ -34,17 +27,17 @@ const AppLayout = ({ children }) => {
 		selectedChatId,
 		initializeSocket,
 		clearChatState,
+		isMobileChatListVisible,
+		setMobileChatListVisible,
+		setSelectedChat,
 	} = useChatStore();
 
 	const { fetchContacts } = useConversationStore();
 	const { fetchMessages } = useMessageStore();
 
 	// Responsive state
-	const [screenSize, setScreenSize] = useState('desktop');
 	const [isMobile, setIsMobile] = useState(false);
 	const [isTablet, setIsTablet] = useState(false);
-	const [showChatList, setShowChatList] = useState(true);
-	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
 	// Panel width state
 	const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
@@ -67,21 +60,28 @@ const AppLayout = ({ children }) => {
 
 		setIsMobile(mobile);
 		setIsTablet(tablet);
-		setScreenSize(mobile ? 'mobile' : tablet ? 'tablet' : 'desktop');
-
 		// On mobile, hide chat list when viewing a specific chat
 		if (mobile && isOnChatPage) {
-			setShowChatList(false);
+			setMobileChatListVisible(false);
 		} else if (!mobile) {
-			setShowChatList(true);
+			setMobileChatListVisible(true);
 		}
-	}, [isOnChatPage]);
+	}, [isOnChatPage, setMobileChatListVisible]);
 
 	useEffect(() => {
 		updateScreenSize();
 		window.addEventListener('resize', updateScreenSize);
 		return () => window.removeEventListener('resize', updateScreenSize);
 	}, [updateScreenSize]);
+
+	useEffect(() => {
+		if (!isMobile) return;
+		if (location.pathname === '/chat') {
+			setMobileChatListVisible(true);
+		} else if (isOnChatPage) {
+			setMobileChatListVisible(false);
+		}
+	}, [location.pathname, isMobile, isOnChatPage, setMobileChatListVisible]);
 
 	// --- Auth & Chat Store Initialization ---
 	useEffect(() => {
@@ -105,10 +105,16 @@ const AppLayout = ({ children }) => {
 	// --- Mobile Navigation Handlers ---
 	const handleBackToChats = useCallback(() => {
 		if (isMobile) {
-			setShowChatList(true);
+			setSelectedChat(null);
+			setMobileChatListVisible(true);
 			navigate('/chat', { replace: true });
 		}
-	}, [isMobile, navigate]);
+	}, [isMobile, navigate, setMobileChatListVisible, setSelectedChat]);
+
+	const handleMobileChatSelect = useCallback((chatId) => {
+		setMobileChatListVisible(false);
+		navigate(`/chat/${chatId}`);
+	}, [navigate, setMobileChatListVisible]);
 
 	// --- Panel Resize Logic (Desktop/Tablet only) ---
 	const handleMouseMove = useCallback((e) => {
@@ -200,6 +206,8 @@ const AppLayout = ({ children }) => {
 		return null;
 	}
 
+	const showChatList = isMobile ? isMobileChatListVisible : true;
+
 	// Mobile Layout
 	if (isMobile) {
 		return (
@@ -213,50 +221,13 @@ const AppLayout = ({ children }) => {
 					'--swipe-progress': '0'
 				}}
 			>
-				{/* Mobile Header */}
-				<div className="absolute top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 safe-area-top">
-					<div className="flex items-center justify-between px-4 py-3">
-						{/* Back button when viewing chat */}
-						{isOnChatPage && !showChatList ? (
-							<button
-								onClick={handleBackToChats}
-								className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors touch-target"
-							>
-								<ArrowLeft className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-							</button>
-						) : (
-							<DropdownMenu open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-								<DropdownMenuTrigger asChild>
-									<button
-										className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors touch-target"
-									>
-										<Menu className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-									</button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="start" className="w-56 bg-[#111b21] border-[#2a3942] text-[#aebac1]">
-									<GlobalSidebar isMobile={true} onItemClick={() => setIsMobileMenuOpen(false)} />
-								</DropdownMenuContent>
-							</DropdownMenu>
-						)}
-
-						<h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
-							{isOnChatPage && !showChatList ? 'Chat' : 'Kord'}
-						</h1>
-
-						<div className="w-9" /> {/* Spacer for centering */}
-					</div>
-				</div>
-
-				{/* Mobile Content */}
-				<div className="flex-1 flex flex-col pt-16 safe-area-bottom">
+				{/* Mobile Content - headers are handled by chat list / chat panels themselves (WhatsApp-style) */}
+				<div className="flex-1 flex flex-col safe-area-bottom">
 					{/* Chat List or Main Content */}
 					{showChatList ? (
 						<ChatListPanel
 							isMobile={true}
-							onChatSelect={(chatId) => {
-								setShowChatList(false);
-								navigate(`/chat/${chatId}`);
-							}}
+							onChatSelect={handleMobileChatSelect}
 						/>
 					) : (
 						<main className="flex-1 flex flex-col bg-white dark:bg-gray-800 min-w-0 overflow-hidden">

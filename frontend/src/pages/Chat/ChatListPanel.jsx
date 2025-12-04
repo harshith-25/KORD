@@ -228,7 +228,7 @@ const ChatListPanel = ({
 	}, [fetchContacts]);
 
 	return (
-		<div className="flex flex-col h-full bg-white dark:bg-gray-800">
+		<div className={`flex flex-col h-full w-full ${isMobile ? 'min-h-screen bg-white dark:bg-gray-900' : 'bg-white dark:bg-gray-800'}`}>
 			<ChatListHeader
 				showBackButton={showBackButton}
 				onBack={onBack}
@@ -262,7 +262,7 @@ const ChatListPanel = ({
 			{/* Chat List */}
 			<div
 				ref={listRef}
-				className="flex-1 overflow-y-auto relative"
+				className={`flex-1 overflow-y-auto relative ${isMobile ? 'overscroll-contain' : ''}`}
 				onScroll={handleScroll}
 				onTouchStart={isMobile ? handleTouchStart : undefined}
 				onTouchMove={isMobile ? handleTouchMove : undefined}

@@ -426,7 +426,7 @@ function ChatMessagesPanel({
 				<div
 					ref={messagesContainerRef}
 					onScroll={handleScroll}
-					className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 bg-gray-50 dark:bg-gray-900"
+					className={`flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 bg-gray-50 dark:bg-gray-900 ${isMobile ? 'pb-6' : ''}`}
 					style={{
 						backgroundImage: isMobile ? 'none' : `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f0f0f0' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
 						minHeight: '0',
@@ -585,7 +585,7 @@ function ChatMessagesPanel({
 				{showScrollButton && (
 					<button
 						onClick={() => scrollToBottom('smooth')}
-						className="absolute z-10 w-12 h-12 bg-white dark:bg-gray-700 shadow-lg rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-600 hover:shadow-xl transform hover:scale-105 transition-all duration-200 bottom-22 left-1/2 -translate-x-1/2"
+						className={`absolute z-10 w-12 h-12 bg-white dark:bg-gray-700 shadow-lg rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-600 hover:shadow-xl transform hover:scale-105 transition-all duration-200 ${isMobile ? 'bottom-20' : 'bottom-22'} left-1/2 -translate-x-1/2`}
 						aria-label="Scroll to bottom"
 					>
 						<ArrowDown className="h-6 w-6 text-gray-600 dark:text-gray-300" />

@@ -9,6 +9,7 @@ export const useChatStore = create((set, get) => ({
   error: null,
   typingUsers: new Map(), // { conversationId: Set([userId1, userId2]) }
   onlineUsers: [],
+  isMobileChatListVisible: true,
 
   // Core Getters
   isAuthenticated: () => {
@@ -327,6 +328,17 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
+  // Mobile chat list visibility helpers
+  setMobileChatListVisible: (visible) => {
+    set({ isMobileChatListVisible: visible });
+  },
+  showMobileChatList: () => {
+    set({ isMobileChatListVisible: true });
+  },
+  hideMobileChatList: () => {
+    set({ isMobileChatListVisible: false });
+  },
+
   // =========================================================================
   // UTILITY/HELPER FUNCTIONS
   // =========================================================================
@@ -509,6 +521,7 @@ export const useChatStore = create((set, get) => ({
       selectedChatId: null,
       typingUsers: new Map(), // ✅ FIXED: Use new Map() instead of {}
       onlineUsers: [],
+      isMobileChatListVisible: true,
     });
   },
 }));

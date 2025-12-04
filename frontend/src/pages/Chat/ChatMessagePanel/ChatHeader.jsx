@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MoreVertical, Phone, Video, Search as SearchIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { MoreVertical, Phone, Video, Search as SearchIcon, ArrowLeft } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import GroupInfoPopover from '@/components/GroupInfoPopover';
 import { useConversationStore } from '@/store/conversationStore';
 import { useAuthStore } from '@/store/authStore';
 import { useContactsStore } from '@/store/contactsStore';
+import { useChatStore } from '@/store/chatStore';
 
 const ChatHeader = ({
 	selectedChat,
@@ -18,6 +20,14 @@ const ChatHeader = ({
 	const avatarBtnRef = useRef(null);
 	const menuBtnRef = useRef(null);
 	const [showGroupInfo, setShowGroupInfo] = useState(false);
+	const navigate = useNavigate();
+	const { setSelectedChat, showMobileChatList } = useChatStore();
+	const handleMobileBack = () => {
+		showMobileChatList?.();
+		setSelectedChat(null);
+		navigate('/chat', { replace: true });
+	};
+
 
 	const { user: currentUser } = useAuthStore();
 	const { allUsers, fetchAllUsers } = useContactsStore();
@@ -211,8 +221,17 @@ const ChatHeader = ({
 
 	return (
 		<>
-			<div className="px-3 py-2 sm:px-4 sm:py-2.5 flex items-center bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+			<div className={`px-3 py-2 sm:px-4 sm:py-2.5 flex items-center bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 ${isMobile ? 'sticky top-0 z-20' : ''}`}>
 				<div className="flex items-center flex-1 min-w-0">
+					{isMobile && (
+						<button
+							onClick={handleMobileBack}
+							className="p-2 -ml-2 mr-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+							aria-label="Back to chats"
+						>
+							<ArrowLeft className="h-5 w-5 text-gray-700 dark:text-gray-200" />
+						</button>
+					)}
 					<button
 						ref={avatarBtnRef}
 						onClick={handleAvatarClick}

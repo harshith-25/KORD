@@ -1,14 +1,39 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { useAuthStore } from '@/store/authStore';
 import SettingsModal from '../pages/Settings/SettingsModal';
 import { MessageCircleMore, Phone, Bookmark, Settings, CircleUserRound, Menu, Archive, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import reactLogo from '@/assets/react.svg';
+import { useIsMobile } from '@/hooks/use-mobile';
 
-const GlobalSidebar = ({ isMobile, onItemClick }) => {
+export const PRIMARY_NAV_ITEMS = [
+	{ name: 'Chats', icon: MessageCircleMore, path: '/chat' },
+	{ name: 'Status', icon: User, path: '/status' },
+	{ name: 'Calls', icon: Phone, path: '/calls' },
+];
+
+export const SECONDARY_NAV_ITEMS = [
+	{ name: 'Starred messages', icon: Bookmark, path: '/starred' },
+	{ name: 'Archived chats', icon: Archive, path: '/archived' },
+];
+
+export const SETTINGS_ENTRIES = (settingsButtonRef, openModal) => ([
+	{
+		name: 'Settings',
+		icon: Settings,
+		ref: settingsButtonRef,
+		action: () => openModal('general')
+	},
+	{
+		name: 'Profile',
+		icon: CircleUserRound,
+		action: () => openModal('profile')
+	},
+]);
+
+const GlobalSidebar = () => {
 	const location = useLocation();
-	const logout = useAuthStore((state) => state.logout);
+	const isMobile = useIsMobile();
 
 	// Modal states and refs
 	const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -31,41 +56,18 @@ const GlobalSidebar = ({ isMobile, onItemClick }) => {
 		};
 	}, [isExpanded]);
 
-	// Define global navigation items
-	const navItems = [
-		{ name: 'Chats', icon: MessageCircleMore, path: '/chat' },
-		{ name: 'Status', icon: User, path: '/status' },
-		{ name: 'Calls', icon: Phone, path: '/calls' },
-	];
-
-	// Define bottom navigation items
 	const bottomNavItems = [
-		{ name: 'Starred messages', icon: Bookmark, path: '/starred' },
-		{ name: 'Archived chats', icon: Archive, path: '/archived' },
-		{
-			name: 'Settings',
-			icon: Settings,
-			action: () => {
-				setActiveSettingsTab('general');
-				setIsSettingsModalOpen(true);
-			},
-			ref: settingsButtonRef
-		},
-		{
-			name: 'Profile',
-			icon: CircleUserRound,
-			action: () => {
-				setActiveSettingsTab('profile');
-				setIsSettingsModalOpen(true);
-			},
-		},
+		...SECONDARY_NAV_ITEMS,
+		...SETTINGS_ENTRIES(settingsButtonRef, (tab) => {
+			setActiveSettingsTab(tab);
+			setIsSettingsModalOpen(true);
+		}),
 	];
 
 	const handleNavClick = (item) => {
 		if (item.action) {
 			item.action();
 		}
-		if (onItemClick) onItemClick();
 	};
 
 	const renderNavItem = (item, isActive) => {
@@ -155,48 +157,6 @@ const GlobalSidebar = ({ isMobile, onItemClick }) => {
 		);
 	};
 
-	// Mobile View (List for Dropdown)
-	if (isMobile) {
-		return (
-			<>
-				<div className="flex flex-col gap-1 py-1">
-					{navItems.map((item) => {
-						const isActive = item.path && location.pathname.startsWith(item.path);
-						return renderNavItem(item, isActive);
-					})}
-
-					{/* Meta AI */}
-					<button
-						className="w-full flex items-center gap-4 px-3 py-2 rounded-lg transition-colors text-[#aebac1] hover:bg-[#202c33] hover:text-white"
-					>
-						<div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-							<MessageCircleMore className="h-3 w-3 text-white" strokeWidth={2} />
-						</div>
-						<span className="text-[15px] font-medium">Meta AI</span>
-					</button>
-				</div>
-
-				<div className="my-2 border-t border-[#2a3942]" />
-
-				<div className="flex flex-col gap-1 py-1">
-					{bottomNavItems.map((item) => {
-						const isActive = item.path && location.pathname === item.path;
-						return renderNavItem(item, isActive);
-					})}
-				</div>
-
-				{/* Settings Modal */}
-				<SettingsModal
-					isOpen={isSettingsModalOpen}
-					onClose={() => setIsSettingsModalOpen(false)}
-					anchorRef={settingsButtonRef}
-					tab={activeSettingsTab}
-				/>
-			</>
-		);
-	}
-
-	// Desktop View (Collapsible Sidebar)
 	return (
 		<>
 			<aside
@@ -226,7 +186,7 @@ const GlobalSidebar = ({ isMobile, onItemClick }) => {
 
 				{/* Top Navigation */}
 				<nav className="flex-1 flex flex-col gap-2 px-1.5 mt-2">
-					{navItems.map((item) => {
+					{PRIMARY_NAV_ITEMS.map((item) => {
 						const isActive = item.path && location.pathname.startsWith(item.path);
 						return renderNavItem(item, isActive);
 					})}

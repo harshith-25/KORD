@@ -1,7 +1,8 @@
-import { memo, useState, useRef } from 'react';
+import { memo, useState, useRef, useMemo } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 
 /**
  * ReactionTooltip - Shows list of users who reacted with which emojis
@@ -9,12 +10,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
  * @param {Array} props.reactions - Array of reaction objects from the message
  * @param {string} props.currentUserId - ID of the current user for highlighting
  * @param {boolean} props.isMobile - Whether the device is mobile (for touch interactions)
+ * @param {string} props.messageId - Id of message for reaction toggles
+ * @param {function} props.onToggleEmoji - Handler when user toggles an emoji reaction
  * @param {React.ReactNode} props.children - Trigger element (reaction badge container)
  */
-function ReactionTooltip({ reactions, currentUserId, isMobile, children }) {
+function ReactionTooltip({ reactions, currentUserId, isMobile, children, messageId, onToggleEmoji }) {
 	const [open, setOpen] = useState(false);
 	const [longPressTriggered, setLongPressTriggered] = useState(false);
 	const longPressTimer = useRef(null);
+	const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
 
 	if (!reactions || reactions.length === 0) {
 		return children;
@@ -28,6 +32,32 @@ function ReactionTooltip({ reactions, currentUserId, isMobile, children }) {
 	}));
 
 	const totalReactions = userReactions.reduce((acc, curr) => acc + curr.emojis.length, 0);
+
+	const emojiGroups = useMemo(() => {
+		const groups = {};
+		userReactions.forEach(item => {
+			(item.emojis || []).forEach(emoji => {
+				if (!groups[emoji]) {
+					groups[emoji] = [];
+				}
+				groups[emoji].push(item.user);
+			});
+		});
+		return groups;
+	}, [userReactions]);
+
+	const currentUserEmojiSet = useMemo(() => {
+		const myEntry = reactions.find(
+			react => (react.user?._id || react.user)?.toString() === currentUserId?.toString()
+		);
+		return new Set(myEntry?.emojis || []);
+	}, [reactions, currentUserId]);
+
+	const handleEmojiToggle = (emoji) => {
+		if (!onToggleEmoji || !messageId) return;
+		const hasReacted = currentUserEmojiSet.has(emoji);
+		onToggleEmoji(messageId, emoji, hasReacted);
+	};
 
 	const getInitials = (user) => {
 		if (!user) return '?';
@@ -116,6 +146,87 @@ function ReactionTooltip({ reactions, currentUserId, isMobile, children }) {
 		}
 	};
 
+	if (isMobile) {
+		return (
+			<>
+				<div
+					onTouchStart={handleTouchStart}
+					onTouchEnd={handleTouchEnd}
+					onTouchMove={handleTouchMove}
+					onClick={() => setMobileSheetOpen(true)}
+					className="cursor-pointer"
+				>
+					{children}
+				</div>
+				<BottomSheet
+					open={mobileSheetOpen}
+					onOpenChange={setMobileSheetOpen}
+					snapPoint="half"
+					title="Reactions"
+					description={`${totalReactions} ${totalReactions === 1 ? 'reaction' : 'reactions'}`}
+				>
+					<div className="p-4 space-y-4">
+						<div className="flex flex-wrap gap-2">
+							{Object.entries(emojiGroups).map(([emoji, users]) => {
+								const hasReacted = users.some((user) => (user?._id || user)?.toString() === currentUserId?.toString());
+								return (
+									<button
+										key={emoji}
+										onClick={() => handleEmojiToggle(emoji)}
+										className={`px-3 py-1 rounded-full border flex items-center gap-2 text-sm ${hasReacted ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 border-gray-200 text-gray-700'}`}
+									>
+										<span>{emoji}</span>
+										{users.length > 1 && <span className="text-xs text-gray-500">{users.length}</span>}
+									</button>
+								);
+							})}
+						</div>
+						<ScrollArea className="max-h-72">
+							<div className="space-y-2">
+								{userReactions.map((item, index) => {
+									const isCurrentUser = (item.user?._id || item.user)?.toString() === currentUserId?.toString();
+
+									return (
+										<div
+											key={`${item.user?._id || index}-${index}`}
+											className={`flex items-center gap-3 px-2 py-2 rounded-md ${isCurrentUser ? 'bg-gray-100 dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'}`}
+										>
+											<Avatar className="h-8 w-8 flex-shrink-0">
+												<AvatarImage src={item.user?.image || item.user?.avatar} />
+												<AvatarFallback className="bg-black dark:bg-white text-white dark:text-black text-xs">
+													{getInitials(item.user)}
+												</AvatarFallback>
+											</Avatar>
+											<div className="flex-1 min-w-0">
+												<div className="flex items-center justify-between">
+													<p className={`text-sm font-medium truncate ${isCurrentUser ? 'text-black dark:text-white' : 'text-gray-900 dark:text-gray-100'}`}>
+														{isCurrentUser ? 'You' : getUserDisplayName(item.user)}
+													</p>
+													<div className="flex items-center gap-1 ml-2">
+														{item.emojis.map((emoji, i) => (
+															<span key={i} className="text-base leading-none" title={emoji}>
+																{emoji}
+															</span>
+														))}
+													</div>
+												</div>
+												<div className="flex items-center justify-between mt-0.5">
+													<span className="text-[10px] text-gray-400 dark:text-gray-500 ml-auto">
+														{formatTime(item.reactedAt)}
+													</span>
+												</div>
+											</div>
+										</div>
+									);
+								})}
+							</div>
+						</ScrollArea>
+					</div>
+				</BottomSheet>
+			</>
+		);
+	}
+
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
@@ -179,9 +290,17 @@ function ReactionTooltip({ reactions, currentUserId, isMobile, children }) {
 											</p>
 											<div className="flex items-center gap-1 ml-2">
 												{item.emojis.map((emoji, i) => (
-													<span key={i} className="text-base leading-none" title={emoji}>
+													<button
+														key={i}
+														className="text-base leading-none"
+														title={emoji}
+														onClick={(e) => {
+															e.stopPropagation();
+															handleEmojiToggle(emoji);
+														}}
+													>
 														{emoji}
-													</span>
+													</button>
 												))}
 											</div>
 										</div>

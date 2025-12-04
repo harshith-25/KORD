@@ -38,6 +38,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.0",
     "tailwindcss": "^4.1.10",
+    "vaul": "^1.1.2",
     "zustand": "^4.5.2"
   },
   "devDependencies": {

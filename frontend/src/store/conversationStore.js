@@ -199,7 +199,6 @@ export const useConversationStore = create((set, get) => ({
   fetchContacts: async () => {
     const {
       isAuthenticated,
-      setSelectedChat,
       getFormattedDisplayName,
       getFormattedAvatar,
       onlineUsers,
@@ -240,10 +239,7 @@ export const useConversationStore = create((set, get) => ({
 
       set({ contacts: contactsData, loadingContacts: false });
 
-      const currentSelectedChatId = useChatStore.getState().selectedChatId;
-      if (!currentSelectedChatId && contactsData.length > 0) {
-        setSelectedChat(contactsData[0].conversationId);
-      }
+      // Do not auto-select a chat; let the user choose after load
     } catch (err) {
       const errorMessage =
         err.response?.data?.message ||

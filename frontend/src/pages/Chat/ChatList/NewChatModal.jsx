@@ -6,8 +6,9 @@ import { useConversationStore } from '@/store/conversationStore';
 import { Search, Users, UserPlus, Loader2, X, ArrowLeft, Camera, Check } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useIsMobile } from '@/hooks/use-mobile';
 
-const NewChatModal = ({ isOpen, onClose }) => {
+const NewChatModal = ({ isOpen, onClose, isMobile: forcedMobile = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [view, setView] = useState('main');
   const [selectedContacts, setSelectedContacts] = useState([]);
@@ -716,15 +717,19 @@ const NewChatModal = ({ isOpen, onClose }) => {
     </>
   );
 
+  const isMobile = forcedMobile || useIsMobile();
+
   if (!isOpen) return null;
+
+  const desktopHeight = `${calculateHeight()}px`;
 
   return (
     <div
-      className="flex flex-col bg-white dark:bg-gray-900 border-0 overflow-hidden rounded-lg shadow-xl"
+      className={`flex flex-col border-0 overflow-hidden shadow-xl ${isMobile ? 'rounded-2xl bg-white dark:bg-gray-900 h-[85vh]' : 'rounded-lg bg-white dark:bg-gray-900'}`}
       style={{
-        height: `${calculateHeight()}px`,
-        minHeight: '360px',
-        maxHeight: 'calc(100vh - 6rem)',
+        height: isMobile ? 'auto' : desktopHeight,
+        minHeight: isMobile ? '70vh' : '360px',
+        maxHeight: isMobile ? '85vh' : 'calc(100vh - 6rem)',
         transition: 'height 0.2s ease-out'
       }}
     >

@@ -6,6 +6,8 @@ import {
 	User, MessageCircle, Bell, Settings, LogOut, Info,
 	Loader2, XCircle, ChevronLeft
 } from 'lucide-react';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 // Dynamically import the settings panels
 const ProfileSettings = lazy(() => import('./ProfileSettings'));
@@ -61,6 +63,7 @@ const SettingsModal = ({ isOpen, onClose, anchorRef, tab='general' }) => {
 	const [activeTab, setActiveTab] = useState(tab);
 	const [showAnimation, setShowAnimation] = useState(false);
 	const modalRef = useRef(null);
+	const isMobile = useIsMobile();
 
 	const updateAuthStoreUser = (updatedUserData) => {
 		set({ user: updatedUserData });
@@ -72,13 +75,15 @@ const SettingsModal = ({ isOpen, onClose, anchorRef, tab='general' }) => {
 			if (!user || !user._id) {
 				fetchUserProfile();
 			}
+			setActiveTab(tab);
 		} else {
 			setShowAnimation(false);
 			setActiveTab('general');
 		}
-	}, [isOpen, user]);
+	}, [isOpen, user, tab]);
 
 	useEffect(() => {
+		if (isMobile) return;
 		const handleClickOutside = (event) => {
 			if (modalRef.current && !modalRef.current.contains(event.target) &&
 				anchorRef?.current && !anchorRef.current.contains(event.target)) {
@@ -89,9 +94,10 @@ const SettingsModal = ({ isOpen, onClose, anchorRef, tab='general' }) => {
 			document.addEventListener('mousedown', handleClickOutside);
 			return () => document.removeEventListener('mousedown', handleClickOutside);
 		}
-	}, [isOpen, onClose, anchorRef]);
+	}, [isOpen, onClose, anchorRef, isMobile]);
 
 	useEffect(() => {
+		if (isMobile) return;
 		const handleEscKey = (event) => {
 			if (event.key === 'Escape' && isOpen) {
 				onClose();
@@ -99,7 +105,7 @@ const SettingsModal = ({ isOpen, onClose, anchorRef, tab='general' }) => {
 		};
 		document.addEventListener('keydown', handleEscKey);
 		return () => document.removeEventListener('keydown', handleEscKey);
-	}, [isOpen, onClose]);
+	}, [isOpen, onClose, isMobile]);
 
 	const fetchUserProfile = async () => {
 		setLoading(true);
@@ -158,6 +164,87 @@ const SettingsModal = ({ isOpen, onClose, anchorRef, tab='general' }) => {
 
 	if (!isOpen) return null;
 
+	const sidebarClassName = `bg-white dark:bg-gray-800 flex flex-col ${isMobile ? 'w-full border-b border-gray-200 dark:border-gray-700' : 'w-48 border-r border-gray-200 dark:border-gray-700'}`;
+	const containerClassName = `bg-white dark:bg-gray-900 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 ${isMobile ? 'flex flex-col h-full' : 'flex h-full'}`;
+
+	const modalBody = (
+		<div className={containerClassName}>
+			<div className={sidebarClassName}>
+				<div className="bg-green-600 dark:bg-green-700 px-6 py-4 flex items-center">
+					<button
+						onClick={onClose}
+						className="mr-4 p-1 text-white hover:bg-green-700 dark:hover:bg-green-800 rounded transition-colors"
+					>
+						<ChevronLeft className="h-6 w-6" />
+					</button>
+					<h2 className="text-xl font-medium text-white">Settings</h2>
+				</div>
+				<nav className={`flex-1 py-2 ${isMobile ? 'overflow-x-auto' : 'overflow-y-auto'}`}>
+					<SettingsButton
+						icon={User}
+						label="Profile"
+						onClick={() => setActiveTab('profile')}
+						isActive={activeTab === 'profile'}
+					/>
+					<SettingsButton
+						icon={Settings}
+						label="General"
+						onClick={() => setActiveTab('general')}
+						isActive={activeTab === 'general'}
+					/>
+					<SettingsButton
+						icon={MessageCircle}
+						label="Chats"
+						onClick={() => setActiveTab('chats')}
+						isActive={activeTab === 'chats'}
+					/>
+					<SettingsButton
+						icon={Bell}
+						label="Notifications"
+						onClick={() => setActiveTab('notifications')}
+						isActive={activeTab === 'notifications'}
+					/>
+					<SettingsButton
+						icon={Info}
+						label="About"
+						onClick={() => setActiveTab('about')}
+						isActive={activeTab === 'about'}
+					/>
+				</nav>
+				<div className="border-t border-gray-200 dark:border-gray-700 p-2">
+					<SettingsButton
+						icon={LogOut}
+						label="Log out"
+						onClick={handleLogout}
+						className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+					/>
+				</div>
+			</div>
+			<div className="flex-1 bg-gray-50 dark:bg-gray-900">
+				{renderContent()}
+			</div>
+		</div>
+	);
+
+	if (isMobile) {
+		return (
+			<BottomSheet
+				open={isOpen}
+				onOpenChange={(open) => {
+					if (!open) onClose();
+				}}
+				snapPoint="full"
+				title="Settings"
+				description="Manage your Kord account"
+				showHandle
+			>
+				<div className="p-2 h-[85vh] overflow-hidden">
+					{modalBody}
+				</div>
+			</BottomSheet>
+		);
+	}
+
 	return (
 		<div
 			ref={modalRef}
@@ -172,62 +259,7 @@ const SettingsModal = ({ isOpen, onClose, anchorRef, tab='general' }) => {
 				height: '600px'
 			}}
 		>
-			<div className="flex h-full bg-white dark:bg-gray-900 rounded-lg shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
-				<div className="w-48 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-					<div className="bg-green-600 dark:bg-green-700 px-6 py-4 flex items-center">
-						<button
-							onClick={onClose}
-							className="mr-4 p-1 text-white hover:bg-green-700 dark:hover:bg-green-800 rounded transition-colors"
-						>
-							<ChevronLeft className="h-6 w-6" />
-						</button>
-						<h2 className="text-xl font-medium text-white">Settings</h2>
-					</div>
-					<nav className="flex-1 py-2 overflow-y-auto">
-						<SettingsButton
-							icon={User}
-							label="Profile"
-							onClick={() => setActiveTab('profile')}
-							isActive={activeTab === 'profile'}
-						/>
-						<SettingsButton
-							icon={Settings}
-							label="General"
-							onClick={() => setActiveTab('general')}
-							isActive={activeTab === 'general'}
-						/>
-						<SettingsButton
-							icon={MessageCircle}
-							label="Chats"
-							onClick={() => setActiveTab('chats')}
-							isActive={activeTab === 'chats'}
-						/>
-						<SettingsButton
-							icon={Bell}
-							label="Notifications"
-							onClick={() => setActiveTab('notifications')}
-							isActive={activeTab === 'notifications'}
-						/>
-						<SettingsButton
-							icon={Info}
-							label="About"
-							onClick={() => setActiveTab('about')}
-							isActive={activeTab === 'about'}
-						/>
-					</nav>
-					<div className="border-t border-gray-200 dark:border-gray-700 p-2">
-						<SettingsButton
-							icon={LogOut}
-							label="Log out"
-							onClick={handleLogout}
-							className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-						/>
-					</div>
-				</div>
-				<div className="flex-1 bg-gray-50 dark:bg-gray-900">
-					{renderContent()}
-				</div>
-			</div>
+			{modalBody}
 		</div>
 	);
 };

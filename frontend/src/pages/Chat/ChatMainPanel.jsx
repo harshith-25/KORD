@@ -271,6 +271,9 @@ function ChatMainPanel() {
 	}
 
 	if (!selectedChatId) {
+		if (isMobile) {
+			return null;
+		}
 		return <NoChatSelectedPlaceholder />;
 	}
 
