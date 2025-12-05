@@ -176,20 +176,29 @@ const AppLayout = ({ children }) => {
 		}
 	}, [isMobile, isOnChatPage]);
 
+	// New swipe back handler to avoid NotFound page
+	const handleSwipeBack = useCallback(() => {
+		if (window.history.length > 1) {
+			navigate(-1);
+		} else {
+			navigate('/dashboard', { replace: true });
+		}
+	}, [navigate]);
+
 	const handleTouchEnd = useCallback((e) => {
 		if (!isMobile || !isOnChatPage) return;
 
 		const touch = e.changedTouches[0];
 		const deltaX = touch.clientX - startXRef.current;
 
-		// If swipe is significant enough, go back
+		// If swipe is significant enough, go back using the new logic
 		if (startXRef.current < 50 && deltaX > 100) {
-			handleBackToChats();
+			handleSwipeBack();
 		}
 
 		// Reset visual feedback
 		layoutRef.current?.style.removeProperty('--swipe-progress');
-	}, [isMobile, isOnChatPage, handleBackToChats]);
+	}, [isMobile, isOnChatPage, handleSwipeBack]);
 
 	// Cleanup effect
 	useEffect(() => {

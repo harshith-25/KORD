@@ -1,60 +1,76 @@
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button'; // Using your Shadcn Button
-// import MainLayout from '@/layouts/MainLayout'; // Use MainLayout if it's meant to be within the app layout
-import { QuestionMarkCircleIcon } from '@heroicons/react/24/outline'; // An icon for 404
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { QuestionMarkCircleIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { useEffect, useState } from 'react';
 
 const NotFoundPage = () => {
 	const navigate = useNavigate();
+	const location = useLocation();
+	const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+	useEffect(() => {
+		const handleResize = () => {
+			setIsMobile(window.innerWidth < 768);
+		};
+
+		window.addEventListener('resize', handleResize);
+		return () => window.removeEventListener('resize', handleResize);
+	}, []);
 
 	const handleGoHome = () => {
-		navigate('/dashboard'); // Or '/' depending on your app's main entry point after login
+		// Navigate to dashboard with replace to prevent back button loop
+		navigate('/dashboard', { replace: true });
 	};
 
-	// If you want this page to have the sidebar and header, use MainLayout.
-	// If it should be a standalone full-page error (like login/register), remove MainLayout.
-	// For a 404, often a standalone page is cleaner. I'll provide both options.
+	const handleGoBack = () => {
+		// Check if there's history to go back to
+		if (window.history.length > 1) {
+			navigate(-1);
+		} else {
+			// Fallback to dashboard if no history
+			handleGoHome();
+		}
+	};
 
-	// Option 1: Standalone 404 page (no sidebar/header, similar to login/register screen)
+	// Determine if this is likely a chat route error
+	const isChatRoute = location.pathname.startsWith('/chat');
+
 	return (
 		<div className="min-h-screen bg-kord-gradient flex items-center justify-center p-4 text-center text-white">
 			<div className="bg-white bg-opacity-10 backdrop-filter backdrop-blur-lg border border-white border-opacity-20 rounded-xl shadow-2xl p-8 sm:p-10 w-full max-w-md animate-fade-in-up">
 				<QuestionMarkCircleIcon className="h-24 w-24 mx-auto mb-6 text-indigo-300 drop-shadow-md" />
 				<h1 className="text-5xl font-extrabold mb-4 drop-shadow-lg">404</h1>
-				<h2 className="text-3xl font-semibold mb-6 text-gray-200">Page Not Found</h2>
+				<h2 className="text-3xl font-semibold mb-6 text-gray-200">
+					{isChatRoute ? 'Chat Not Found' : 'Page Not Found'}
+				</h2>
 				<p className="text-lg mb-8 text-gray-300">
-					Oops! The page you're looking for doesn't exist or has been moved.
+					{isChatRoute
+						? "The conversation you're looking for doesn't exist or has been deleted."
+						: "Oops! The page you're looking for doesn't exist or has been moved."
+					}
 				</p>
-				<Button
-					onClick={handleGoHome}
-					className="w-full sm:w-auto px-8 py-3 text-lg font-semibold bg-indigo-600 hover:bg-indigo-700 transition-colors duration-200"
-				>
-					Go to Dashboard
-				</Button>
+
+				<div className="flex flex-col sm:flex-row gap-3 justify-center">
+					{isMobile && (
+						<Button
+							onClick={handleGoBack}
+							variant="outline"
+							className="w-full sm:w-auto px-6 py-3 text-lg font-semibold bg-white/10 hover:bg-white/20 border-white/30 text-white transition-colors duration-200"
+						>
+							<ArrowLeftIcon className="h-5 w-5 mr-2 inline" />
+							Go Back
+						</Button>
+					)}
+					<Button
+						onClick={handleGoHome}
+						className="w-full sm:w-auto px-8 py-3 text-lg font-semibold bg-indigo-600 hover:bg-indigo-700 transition-colors duration-200"
+					>
+						Go to Dashboard
+					</Button>
+				</div>
 			</div>
 		</div>
 	);
-
-	// Option 2: 404 page within the MainLayout (with sidebar/header)
-	/*
-	return (
-		<MainLayout>
-			<div className="flex flex-col items-center justify-center min-h-[calc(100vh-6rem)] p-6 text-center bg-app-background text-app-foreground">
-				<QuestionMarkCircleIcon className="h-24 w-24 mx-auto mb-6 text-app-accent" />
-				<h1 className="text-5xl font-extrabold mb-4">404</h1>
-				<h2 className="text-3xl font-semibold mb-6">Page Not Found</h2>
-				<p className="text-lg mb-8 text-app-foreground/80">
-					Oops! The page you're looking for doesn't exist or has been moved.
-				</p>
-				<Button
-					onClick={handleGoHome}
-					className="px-8 py-3 text-lg font-semibold" // Shadcn button default styles apply
-				>
-					Go to Dashboard
-				</Button>
-			</div>
-		</MainLayout>
-	);
-	*/
 };
 
 export default NotFoundPage;

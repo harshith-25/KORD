@@ -221,7 +221,7 @@ const ChatHeader = ({
 
 	return (
 		<>
-			<div className={`px-3 py-2 sm:px-4 sm:py-2.5 flex items-center bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 ${isMobile ? 'sticky top-0 z-20' : ''}`}>
+			<div className={`px-3 py-2 sm:px-4 sm:py-2.5 flex items-center bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 ${isMobile ? 'fixed top-0 left-0 right-0 z-20' : ''}`}>
 				<div className="flex items-center flex-1 min-w-0">
 					{isMobile && (
 						<button
