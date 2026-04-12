@@ -280,9 +280,15 @@ function ChatMainPanel() {
 	// WhatsApp-style mobile layout: Fixed header, scrollable messages, fixed input
 	if (isMobile) {
 		return (
-			<div className="flex flex-col h-full w-full overflow-hidden">
-				{/* Fixed Header */}
-				<div className="flex-shrink-0 w-full">
+			<div
+				className="flex flex-col w-full overflow-hidden"
+				style={{
+					height: 'var(--app-vh, 100vh)',
+					overscrollBehavior: 'none',
+				}}
+			>
+				{/* Header - stays at top via flex-shrink-0 */}
+				<div className="flex-shrink-0 w-full z-10">
 					<ChatHeader
 						selectedChat={selectedChat}
 						chatName={chatName}
@@ -294,7 +300,7 @@ function ChatMainPanel() {
 					/>
 				</div>
 
-				{/* Scrollable Messages Area - This is the only scrollable part */}
+				{/* Scrollable Messages Area - grows to fill space between header and input */}
 				<div className="flex-1 min-h-0 w-full overflow-hidden">
 					<ChatMessagesPanel
 						currentMessages={currentMessages}
@@ -318,8 +324,8 @@ function ChatMainPanel() {
 					/>
 				</div>
 
-				{/* Fixed Input Area */}
-				<div className="flex-shrink-0 w-full">
+				{/* Input Area - stays at bottom via flex-shrink-0 */}
+				<div className="flex-shrink-0 w-full z-10" style={{ overscrollBehavior: 'none' }}>
 					<ChatMessageInput
 						messageInput={messageInput}
 						setMessageInput={setMessageInput}

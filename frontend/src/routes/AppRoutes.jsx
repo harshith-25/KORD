@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 
 // Import your pages
@@ -15,6 +15,7 @@ import AppLayout from '@/layouts/AppLayout';
 // AuthGuard to protect routes and provide the AppLayout
 const AuthGuard = ({ children }) => {
 	const { isAuthenticated, loading, initializeAuth } = useAuthStore();
+	const location = useLocation();
 
 	useEffect(() => {
 		initializeAuth();
@@ -29,7 +30,8 @@ const AuthGuard = ({ children }) => {
 	}
 
 	if (!isAuthenticated) {
-		return <Navigate to="/login" replace />;
+		// Save intended destination so login can redirect back
+		return <Navigate to="/login" state={{ from: location.pathname }} replace />;
 	}
 
 	return <AppLayout>{children}</AppLayout>;

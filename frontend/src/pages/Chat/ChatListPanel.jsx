@@ -185,7 +185,7 @@ const ChatListPanel = ({
 		if (pullDistance >= pullToRefreshThreshold) {
 			setIsRefreshing(true);
 			try {
-				await fetchContacts();
+				await fetchContacts(true); // force=true to bypass cache on pull-to-refresh
 			} finally {
 				setIsRefreshing(false);
 			}
@@ -222,13 +222,11 @@ const ChatListPanel = ({
 		return () => document.removeEventListener('keydown', handleKeyDown);
 	}, [isSelectionMode, searchQuery]);
 
-	// Auto-fetch contacts
-	useEffect(() => {
-		fetchContacts();
-	}, [fetchContacts]);
+	// Removed: auto-fetch is handled by AppLayout to avoid duplicate calls.
+	// Pull-to-refresh uses fetchContacts(true) to force a fresh fetch.
 
 	return (
-		<div className={`flex flex-col h-full w-full ${isMobile ? 'min-h-screen bg-white dark:bg-gray-900' : 'bg-white dark:bg-gray-800'}`}>
+		<div className={`flex flex-col h-full w-full ${isMobile ? 'min-h-0 bg-white dark:bg-gray-900' : 'bg-white dark:bg-gray-800'}`}>
 			<ChatListHeader
 				showBackButton={showBackButton}
 				onBack={onBack}

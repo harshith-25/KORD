@@ -19,6 +19,13 @@ const MIN_PANEL_WIDTH = 300;
 const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 350;
 
+// Minimum swipe distance to trigger navigation (px)
+const SWIPE_THRESHOLD = 80;
+// Max vertical movement allowed during a horizontal swipe (px)
+const SWIPE_VERTICAL_TOLERANCE = 50;
+// Only trigger from the left edge of the screen (px)
+const EDGE_ZONE = 30;
+
 const AppLayout = ({ children }) => {
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -39,6 +46,9 @@ const AppLayout = ({ children }) => {
 	const [isMobile, setIsMobile] = useState(false);
 	const [isTablet, setIsTablet] = useState(false);
 
+	// Mobile viewport height (handles keyboard, address bar)
+	const [mobileVh, setMobileVh] = useState(window.innerHeight);
+
 	// Panel width state
 	const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
 	const [isResizing, setIsResizing] = useState(false);
@@ -46,11 +56,41 @@ const AppLayout = ({ children }) => {
 	// Refs for resize handling
 	const isResizingRef = useRef(false);
 	const startXRef = useRef(0);
+	const startYRef = useRef(0);
 	const startWidthRef = useRef(0);
 	const layoutRef = useRef(null);
+	const swipeActiveRef = useRef(false);
 
 	// Check if we're on a chat page
 	const isOnChatPage = location.pathname.startsWith('/chat/') && location.pathname !== '/chat';
+
+	// --- Mobile Viewport Height ---
+	// Use visualViewport API to get the real visible height (accounts for keyboard, address bar)
+	useEffect(() => {
+		const updateVh = () => {
+			const vh = window.visualViewport?.height || window.innerHeight;
+			setMobileVh(vh);
+			// Also set CSS custom property for use in styles
+			document.documentElement.style.setProperty('--app-vh', `${vh}px`);
+		};
+
+		updateVh();
+
+		// visualViewport resize fires when keyboard opens/closes and address bar changes
+		if (window.visualViewport) {
+			window.visualViewport.addEventListener('resize', updateVh);
+			window.visualViewport.addEventListener('scroll', updateVh);
+		}
+		window.addEventListener('resize', updateVh);
+
+		return () => {
+			if (window.visualViewport) {
+				window.visualViewport.removeEventListener('resize', updateVh);
+				window.visualViewport.removeEventListener('scroll', updateVh);
+			}
+			window.removeEventListener('resize', updateVh);
+		};
+	}, []);
 
 	// --- Responsive Logic ---
 	const updateScreenSize = useCallback(() => {
@@ -82,6 +122,30 @@ const AppLayout = ({ children }) => {
 			setMobileChatListVisible(false);
 		}
 	}, [location.pathname, isMobile, isOnChatPage, setMobileChatListVisible]);
+
+	// --- Browser Back/Forward Button Handling ---
+	// Intercept popstate (browser back/forward) to properly sync mobile view state
+	useEffect(() => {
+		if (!isMobile) return;
+
+		const handlePopState = () => {
+			const path = window.location.pathname;
+
+			if (path === '/chat' || path === '/dashboard' || path === '/') {
+				// Going back to a list view — show chat list
+				setSelectedChat(null);
+				setMobileChatListVisible(true);
+			} else if (path.startsWith('/chat/')) {
+				// Going forward into a chat — hide chat list
+				setMobileChatListVisible(false);
+			}
+			// For /login, /register — the AuthGuard handles these,
+			// no need to manipulate mobile state
+		};
+
+		window.addEventListener('popstate', handlePopState);
+		return () => window.removeEventListener('popstate', handlePopState);
+	}, [isMobile, setMobileChatListVisible, setSelectedChat]);
 
 	// --- Auth & Chat Store Initialization ---
 	useEffect(() => {
@@ -155,50 +219,60 @@ const AppLayout = ({ children }) => {
 		document.onselectstart = () => false;
 	}, [panelWidth, handleMouseMove, handleMouseUp, isMobile]);
 
-	// Touch handlers for mobile gestures
+	// --- Mobile Swipe-to-Back Gesture ---
+	// Only triggers from the left edge, requires primarily horizontal movement,
+	// and always navigates to chat list (not browser history)
 	const handleTouchStart = useCallback((e) => {
 		if (!isMobile || !isOnChatPage) return;
 
 		const touch = e.touches[0];
 		startXRef.current = touch.clientX;
+		startYRef.current = touch.clientY;
+		swipeActiveRef.current = touch.clientX < EDGE_ZONE;
 	}, [isMobile, isOnChatPage]);
 
 	const handleTouchMove = useCallback((e) => {
-		if (!isMobile || !isOnChatPage) return;
+		if (!isMobile || !isOnChatPage || !swipeActiveRef.current) return;
 
 		const touch = e.touches[0];
 		const deltaX = touch.clientX - startXRef.current;
+		const deltaY = Math.abs(touch.clientY - startYRef.current);
 
-		// If swiping right from left edge, show back gesture
-		if (startXRef.current < 50 && deltaX > 50) {
-			// Add visual feedback for swipe gesture
-			layoutRef.current?.style.setProperty('--swipe-progress', Math.min(deltaX / 100, 1));
+		// If vertical movement exceeds tolerance, cancel the swipe
+		if (deltaY > SWIPE_VERTICAL_TOLERANCE) {
+			swipeActiveRef.current = false;
+			layoutRef.current?.style.removeProperty('--swipe-progress');
+			return;
+		}
+
+		// Only show visual feedback for rightward swipes
+		if (deltaX > 0) {
+			const progress = Math.min(deltaX / SWIPE_THRESHOLD, 1);
+			layoutRef.current?.style.setProperty('--swipe-progress', progress);
 		}
 	}, [isMobile, isOnChatPage]);
 
-	// New swipe back handler to avoid NotFound page
-	const handleSwipeBack = useCallback(() => {
-		if (window.history.length > 1) {
-			navigate(-1);
-		} else {
-			navigate('/dashboard', { replace: true });
-		}
-	}, [navigate]);
-
 	const handleTouchEnd = useCallback((e) => {
-		if (!isMobile || !isOnChatPage) return;
+		if (!isMobile || !isOnChatPage || !swipeActiveRef.current) {
+			swipeActiveRef.current = false;
+			layoutRef.current?.style.removeProperty('--swipe-progress');
+			return;
+		}
 
 		const touch = e.changedTouches[0];
 		const deltaX = touch.clientX - startXRef.current;
+		const deltaY = Math.abs(touch.clientY - startYRef.current);
 
-		// If swipe is significant enough, go back using the new logic
-		if (startXRef.current < 50 && deltaX > 100) {
-			handleSwipeBack();
+		// Only trigger if primarily horizontal and past threshold
+		if (deltaX > SWIPE_THRESHOLD && deltaY < SWIPE_VERTICAL_TOLERANCE) {
+			// ALWAYS go to chat list — never use navigate(-1) which could go to login
+			handleBackToChats();
 		}
 
-		// Reset visual feedback
+		// Reset
+		swipeActiveRef.current = false;
 		layoutRef.current?.style.removeProperty('--swipe-progress');
-	}, [isMobile, isOnChatPage, handleSwipeBack]);
+	}, [isMobile, isOnChatPage, handleBackToChats]);
 
 	// Cleanup effect
 	useEffect(() => {
@@ -222,12 +296,18 @@ const AppLayout = ({ children }) => {
 		return (
 			<div
 				ref={layoutRef}
-				className="flex h-screen overflow-hidden bg-gray-100 dark:bg-gray-900 relative"
+				className="flex overflow-hidden bg-gray-100 dark:bg-gray-900 relative"
 				onTouchStart={handleTouchStart}
 				onTouchMove={handleTouchMove}
 				onTouchEnd={handleTouchEnd}
 				style={{
-					'--swipe-progress': '0'
+					'--swipe-progress': '0',
+					height: `${mobileVh}px`,
+					// Prevent iOS bounce-scroll on the layout container
+					overscrollBehavior: 'none',
+					// Use safe area insets for notched phones
+					paddingTop: 'env(safe-area-inset-top)',
+					paddingBottom: 'env(safe-area-inset-bottom)',
 				}}
 			>
 				{/* Mobile Content - headers are handled by chat list / chat panels themselves (WhatsApp-style) */}

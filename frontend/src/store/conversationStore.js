@@ -147,6 +147,9 @@ const mapConversationToContact = (conversation, helpers) => {
   };
 };
 
+// Cache TTL: skip re-fetching conversations if data is younger than this (ms)
+const CONTACTS_CACHE_TTL = 60_000; // 60 seconds
+
 export const useConversationStore = create((set, get) => ({
   // State
   contacts: [],
@@ -155,6 +158,7 @@ export const useConversationStore = create((set, get) => ({
   isLoading: false,
   currentAction: null,
   error: null,
+  lastFetchedAt: 0, // timestamp of last successful fetchContacts
 
   // ✅ Add inside create(...) return object in conversationStore.js
   ensureConversationLoaded: async (conversationId) => {
@@ -196,7 +200,10 @@ export const useConversationStore = create((set, get) => ({
   /* =========================================================================
      FETCH CONVERSATIONS
   ========================================================================= */
-  fetchContacts: async () => {
+  /** Invalidate cache so next fetchContacts does a real API call */
+  invalidateContactsCache: () => set({ lastFetchedAt: 0 }),
+
+  fetchContacts: async (force = false) => {
     const {
       isAuthenticated,
       getFormattedDisplayName,
@@ -213,7 +220,17 @@ export const useConversationStore = create((set, get) => ({
       return;
     }
 
+    // Skip fetch if already loading
     if (get().loadingContacts) return;
+
+    // Cache check — skip API call if data is fresh and we have contacts
+    if (
+      !force &&
+      get().contacts.length > 0 &&
+      Date.now() - get().lastFetchedAt < CONTACTS_CACHE_TTL
+    ) {
+      return;
+    }
 
     set({ loadingContacts: true, error: null });
 
@@ -237,7 +254,11 @@ export const useConversationStore = create((set, get) => ({
         )
         .sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
 
-      set({ contacts: contactsData, loadingContacts: false });
+      set({
+        contacts: contactsData,
+        loadingContacts: false,
+        lastFetchedAt: Date.now(),
+      });
 
       // Do not auto-select a chat; let the user choose after load
     } catch (err) {

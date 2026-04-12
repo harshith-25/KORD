@@ -284,3 +284,52 @@ select {
     @apply bg-background text-foreground;
   }
 }
+
+/* ============================================
+   MOBILE-SPECIFIC STYLES
+   ============================================ */
+
+/* Dynamic viewport height fallback */
+:root {
+  --app-vh: 100vh;
+}
+
+/* Prevent iOS rubber-band bounce on the body/html */
+html, body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent pull-to-refresh on the whole page (mobile Chrome) */
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* Mobile: prevent zoom on input focus (iOS Safari) */
+@media screen and (max-width: 768px) {
+  input, textarea, select {
+    font-size: 16px !important; /* iOS won't zoom if font-size >= 16px */
+  }
+
+  /* Use dynamic viewport height */
+  .h-screen {
+    height: var(--app-vh, 100vh);
+  }
+
+  /* Prevent text selection during swipe gestures */
+  .swipe-container {
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: pan-y;
+  }
+}
+
+/* Safe area padding for notched phones (iPhone X+, Android cutouts) */
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
